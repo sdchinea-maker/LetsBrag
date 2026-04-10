@@ -117,7 +117,7 @@ const BRANCHES = {
     skills:["Leadership","Tactical Proficiency","Damage Control","Watch Standing","Training & Mentorship","Administrative","Seamanship","Navigation","Communications","Maintenance & Logistics","Physical Readiness","Community Service","Education"],
     iloveCats:["Award Certificate","Commendation Letter","Photo — Ceremony","Photo — Underway","Qualification Card","NEC Certificate","Other"],
     docCats:["Career Roadmap","Rate Training Manual","NAVADMIN / Directive","PRD / Orders","Transfer Docs","Personal Statement / Bio","Resume / Package","Other"],
-    pieGuidance:"Aim for ~60% Performance, ~25% Self-Improvement, ~15% Exposure. Chiefs look at all three.",
+    pieGuidance:"Aim for ~60% Performance, ~25% Self-Improvement, ~15% Exposure. Your leadership looks at all three.",
     bragIntro:"Hand to your LPO or Chief before EVAL season.",
     sampleTasks: [
       {id:1,name:"DC Training Program Overhaul",status:"Complete",priority:"High",pie:"P",quarter:"Q1 (Jan–Mar)",evalPeriod:"Periodic",requestor:"LT Ramirez, DCA",commandObjective:"Mission Readiness",description:"Redesigned DC qual card system and created 12 new hands-on drills.",impact:"DC qual rate increased from 54% to 91% across 47 Sailors in 8 weeks. Zero INSURV discrepancies.",visibility:"CO",evidence:"",feedback:'"Single-handedly transformed our DC program." — LT Ramirez',skills:["Leadership","Damage Control"],createdAt:"2026-01-20"},
@@ -356,7 +356,7 @@ function FileModal({ existing, categories, onSave, onClose }) {
 }
 
 // ─── ACHIEVEMENT MODAL ────────────────────────────────────────────────────────
-function AchModal({ task, onSave, onDelete, onClose, isEdit }) {
+function AchModal({ task, onSave, onDelete, onClose, isEdit, B }) {
   const [form,setForm]=useState(task);
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
   const appendVoice=(k,v)=>setForm(f=>({...f,[k]:f[k]?f[k]+" "+v:v}));
@@ -380,16 +380,16 @@ function AchModal({ task, onSave, onDelete, onClose, isEdit }) {
             <F label="Priority"><select style={sl} value={form.priority} onChange={e=>set("priority",e.target.value)}>{["High","Medium","Low"].map(s=><option key={s}>{s}</option>)}</select></F>
             <F label="PIE Category"><select style={sl} value={form.pie} onChange={e=>set("pie",e.target.value)}><option value="P">P — Performance</option><option value="I">I — Self-Improvement</option><option value="E">E — Exposure</option></select></F>
             <F label="Quarter"><select style={sl} value={form.quarter} onChange={e=>set("quarter",e.target.value)}>{QUARTERS.map(s=><option key={s}>{s}</option>)}</select></F>
-            <F label="EVAL Period"><select style={sl} value={form.evalPeriod} onChange={e=>set("evalPeriod",e.target.value)}>{EVAL_PERIODS.map(s=><option key={s}>{s}</option>)}</select></F>
+            <F label={`${B?.evalDoc||"EVAL"} Period`}><select style={sl} value={form.evalPeriod} onChange={e=>set("evalPeriod",e.target.value)}>{(B.evalTypes||EVAL_PERIODS).map(s=><option key={s}>{s}</option>)}</select></F>
           </Sec>
           <Sec title="Command Context">
-            <F label="Who Can Validate"><input style={inp} value={form.requestor} onChange={e=>set("requestor",e.target.value)} placeholder="Name, Rate/Rank" /></F>
-            <F label="Command Objective"><select style={sl} value={form.commandObjective} onChange={e=>set("commandObjective",e.target.value)}>{CMD_OBJ.map(s=><option key={s}>{s}</option>)}</select></F>
-            <F label="Visibility"><select style={sl} value={form.visibility} onChange={e=>set("visibility",e.target.value)}>{VISIBILITY_OPT.map(s=><option key={s}>{s}</option>)}</select></F>
+            <F label="Who Can Validate"><input style={inp} value={form.requestor} onChange={e=>set("requestor",e.target.value)} placeholder={`Name, ${B?.rankLabel||"Rate/Rank"}`} /></F>
+            <F label={`${B?.name||"Command"} Objective`}><select style={sl} value={form.commandObjective} onChange={e=>set("commandObjective",e.target.value)}>{(B.objectives||CMD_OBJ).map(s=><option key={s}>{s}</option>)}</select></F>
+            <F label={`Visibility`}><select style={sl} value={form.visibility} onChange={e=>set("visibility",e.target.value)}>{(B.visibility||VISIBILITY_OPT).map(s=><option key={s}>{s}</option>)}</select></F>
             <F label="Evidence / Link"><input style={inp} value={form.evidence} onChange={e=>set("evidence",e.target.value)} placeholder="NDAWS, award orders, link..." /></F>
           </Sec>
           <Sec title="Narrative & Impact">
-            <F label="What You Did" full><div style={{ position:"relative" }}><textarea style={{...inp,height:72,resize:"vertical",paddingRight:46}} value={form.description} onChange={e=>set("description",e.target.value)} placeholder="What was the situation? What did YOU do?" /><VoiceBtn onResult={v=>appendVoice("description",v)} /></div></F>
+            <F label="What You Did" full><div style={{ position:"relative" }}><textarea style={{...inp,height:72,resize:"vertical",paddingRight:46}} value={form.description} onChange={e=>set("description",e.target.value)} placeholder={`What was the situation? What did YOU specifically do as a ${B?.memberTitle||"service member"}?`} /><VoiceBtn onResult={v=>appendVoice("description",v)} /></div></F>
             <F label="⭐ Quantifiable Impact — YOUR MOST IMPORTANT FIELD" full>
               <div style={{ position:"relative" }}><textarea style={{...inp,height:90,resize:"vertical",borderColor:C.red,paddingRight:46,background:"rgba(206,51,52,.05)"}} value={form.impact} onChange={e=>set("impact",e.target.value)} placeholder="e.g. 'Increased DC qual rate from 54% to 91% across 47 Sailors in 8 weeks. Zero INSURV discrepancies.'" /><VoiceBtn onResult={v=>appendVoice("impact",v)} /></div>
               <div style={{ fontSize:11,color:C.red,marginTop:4,fontWeight:600 }}>How many affected? What % improved? $$ saved? How fast?</div>
@@ -398,7 +398,7 @@ function AchModal({ task, onSave, onDelete, onClose, isEdit }) {
           </Sec>
           <div style={{ marginBottom:20 }}>
             <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:13,color:C.red,letterSpacing:1.5,textTransform:"uppercase",marginBottom:10,paddingBottom:6,borderBottom:`1px solid ${C.navyBorder}` }}>Core Competencies</div>
-            <div style={{ display:"flex",flexWrap:"wrap",gap:7 }}>{SKILLS_OPTIONS.map(s=><button key={s} onClick={()=>toggle(s)} style={{ padding:"6px 12px",borderRadius:99,border:`1.5px solid ${form.skills.includes(s)?C.red:C.navyBorder}`,background:form.skills.includes(s)?"rgba(206,51,52,.15)":C.navyMid,color:form.skills.includes(s)?C.redLight:C.textDim,fontSize:12,fontWeight:600,cursor:"pointer" }}>{s}</button>)}</div>
+            <div style={{ display:"flex",flexWrap:"wrap",gap:7 }}>{(B?.skills||SKILLS_OPTIONS).map(s=><button key={s} onClick={()=>toggle(s)} style={{ padding:"6px 12px",borderRadius:99,border:`1.5px solid ${form.skills.includes(s)?C.red:C.navyBorder}`,background:form.skills.includes(s)?"rgba(206,51,52,.15)":C.navyMid,color:form.skills.includes(s)?C.redLight:C.textDim,fontSize:12,fontWeight:600,cursor:"pointer" }}>{s}</button>)}</div>
           </div>
           <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",paddingTop:14,borderTop:`1px solid ${C.navyBorder}` }}>
             <div>{isEdit&&<button onClick={()=>{ if(window.confirm("Delete this achievement? This cannot be undone.")) onDelete(task.id); }} style={{ background:"rgba(206,51,52,.15)",color:C.redLight,border:`1px solid rgba(206,51,52,.3)`,padding:"9px 15px",borderRadius:8,fontWeight:600,fontSize:13,cursor:"pointer" }}>🗑 Delete Achievement</button>}</div>
@@ -496,7 +496,7 @@ function ProfileScreen({ profile, setProfile, user, onLogout, appYear, setAppYea
       <div style={{ background:`linear-gradient(135deg,${C.navyCard},rgba(206,51,52,.1))`,borderRadius:16,padding:24,marginBottom:20,border:`1px solid ${C.navyBorder}`,position:"relative",overflow:"hidden" }}>
         <div style={{ position:"absolute",right:-10,top:-10,fontSize:100,opacity:.05,userSelect:"none" }}>⚓</div>
         <div style={{ display:"flex",alignItems:"center",gap:16 }}>
-          {user?.photoURL?<img src={user.photoURL} alt="avatar" style={{ width:60,height:60,borderRadius:14,border:`2px solid ${C.red}` }} />:<div style={{ width:60,height:60,borderRadius:14,background:`linear-gradient(135deg,${C.red},#8B0000)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:26 }}>⚓</div>}
+          {user?.photoURL?<img src={user.photoURL} alt="avatar" style={{ width:60,height:60,borderRadius:14,border:`2px solid ${C.red}` }} />:<div style={{ width:60,height:60,borderRadius:14,background:`linear-gradient(135deg,${C.red},#8B0000)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:26 }}>{B.emoji}</div>}
           <div>
             <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:800,fontSize:24,color:C.text,lineHeight:1 }}>{profile.name||user?.displayName||"Your Name"}</div>
             <div style={{ fontSize:13,color:C.textDim,marginTop:4 }}>{[profile.paygrade,profile.rate].filter(Boolean).join(" ")}{profile.ship&&<span> · {profile.ship}</span>}</div>
@@ -516,7 +516,7 @@ function ProfileScreen({ profile, setProfile, user, onLogout, appYear, setAppYea
           <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:16,color:C.text,marginBottom:16 }}>Edit Profile</div>
           <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12 }}>
             <div style={{ gridColumn:"1/-1" }}><label style={lbl}>Full Name</label><input style={inp} value={form.name} onChange={e=>set("name",e.target.value)} placeholder="Petty Officer Jane Smith" /></div>
-            <div><label style={lbl}>Paygrade</label><select style={{...inp,cursor:"pointer"}} value={form.paygrade} onChange={e=>set("paygrade",e.target.value)}>{PAYGRADES.map(p=><option key={p}>{p}</option>)}</select></div>
+            <div><label style={lbl}>Paygrade</label><select style={{...inp,cursor:"pointer"}} value={form.paygrade} onChange={e=>set("paygrade",e.target.value)}>{(B.paygrades||PAYGRADES).map(p=><option key={p}>{p}</option>)}</select></div>
             <div><label style={lbl}>Rate / Designator</label><input style={inp} value={form.rate} onChange={e=>set("rate",e.target.value)} placeholder="IT, BM, HM..." /></div>
             <div><label style={lbl}>Ship / Unit</label><input style={inp} value={form.ship} onChange={e=>set("ship",e.target.value)} placeholder="USS [Ship Name]" /></div>
             <div><label style={lbl}>Command</label><input style={inp} value={form.command} onChange={e=>set("command",e.target.value)} placeholder="Command name" /></div>
@@ -752,7 +752,7 @@ function AwardModal({ award, onSave, onDelete, onClose, isEdit, B }) {
             </div>
           </div>
           <div><label style={lbl}>Nominated By</label>
-            <input style={inp} value={form.nominatedBy} onChange={e=>set("nominatedBy",e.target.value)} placeholder="Name, Rate/Rank" />
+            <input style={inp} value={form.nominatedBy} onChange={e=>set("nominatedBy",e.target.value)} placeholder={`Name, ${B?.rankLabel||"Rate/Rank"}`} />
           </div>
           <div><label style={lbl}>Description / What It Was For</label>
             <textarea style={{...inp,height:75,resize:"vertical"}} value={form.description} onChange={e=>set("description",e.target.value)} placeholder="Brief description of what this award recognizes..." />
@@ -833,20 +833,20 @@ function CoachChat({ messages, setMessages, input, setInput, loading, setLoading
     const pieI = done.filter(t=>t.pie==="I").length;
     const pieE = done.filter(t=>t.pie==="E").length;
     const systemPrompt = [
-  'You are a highly experienced U.S. ${B.name} career coach and mentor with 20+ years of service. You help ${B.membersTitle} advance their careers, write better ${B.evalDoc} evaluations, prepare for promotion boards, and transition to civilian life.',
-  '',
-  'Member Profile:',
-  '- Branch: U.S. ${B.name}',
-  '- Name: ${profile.name||"Not set"}',
-  '- Paygrade: ${profile.paygrade||"Not set"}',
-  '- ${B.rankLabel}: ${profile.rate||"Not set"}',
-  '- Unit: ${profile.ship||"Not set"}',
-  '- Achievements logged: ${tasks.length} total, ${done.length} complete',
-  '- PIE balance: ${pieP} Performance / ${pieI} Self-Improvement / ${pieE} Exposure',
-  '- Goals: ${goals.length} set, ${goals.filter(g=>g.status==="Complete").length} complete',
-  '- Awards: ${awards.length} logged',
-  '',
-  'Be direct, practical, and speak like a trusted senior mentor — not a textbook. Use ${B.name}-specific terminology. Keep responses under 200 words unless the member asks for detail. Always be encouraging but honest. Never share classified information or discuss specific operations.'
+  `You are a highly experienced U.S. ${B.name} career coach and mentor with 20+ years of service. You help ${B.membersTitle} advance their careers, write better ${B.evalDoc} evaluations, prepare for promotion boards, and transition to civilian life.`,
+  ``,
+  `Member Profile:`,
+  `- Branch: U.S. ${B.name}`,
+  `- Name: ${profile.name||"Not set"}`,
+  `- Paygrade: ${profile.paygrade||"Not set"}`,
+  `- ${B.rankLabel}: ${profile.rate||"Not set"}`,
+  `- Unit: ${profile.ship||"Not set"}`,
+  `- Achievements logged: ${tasks.length} total, ${done.length} complete`,
+  `- PIE balance: ${pieP} Performance / ${pieI} Self-Improvement / ${pieE} Exposure`,
+  `- Goals: ${goals.length} set, ${goals.filter(g=>g.status==="Complete").length} complete`,
+  `- Awards: ${awards.length} logged`,
+  ``,
+  `Be direct, practical, and speak like a trusted senior mentor — not a textbook. Use ${B.name}-specific terminology. Keep responses under 200 words unless asked for detail. Always be encouraging but honest.`
 ].join("\n");
 
     try {
@@ -1299,12 +1299,12 @@ function LoginScreen({ onGoogleLogin, onDemo, loading }) {
   return (
     <div className="fade-in" style={{ minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,background:C.navy,position:"relative",overflow:"hidden" }}>
       <div style={{ position:"absolute",inset:0,backgroundImage:`radial-gradient(circle at 20% 20%, rgba(206,51,52,.08) 0%, transparent 60%), radial-gradient(circle at 80% 80%, rgba(62,137,255,.06) 0%, transparent 60%)`,pointerEvents:"none" }} />
-      <div style={{ position:"absolute",fontSize:300,opacity:.03,userSelect:"none",pointerEvents:"none",lineHeight:1 }}>⚓</div>
+      <div style={{ position:"absolute",fontSize:300,opacity:.03,userSelect:"none",pointerEvents:"none",lineHeight:1 }}>🎖️</div>
       <div style={{ position:"relative",textAlign:"center",maxWidth:380,width:"100%" }}>
-        <div style={{ width:72,height:72,borderRadius:18,background:`linear-gradient(135deg,${C.red},#8B0000)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:36,margin:"0 auto 20px",boxShadow:"0 8px 32px rgba(206,51,52,.4)" }}>⚓</div>
+        <div style={{ width:72,height:72,borderRadius:18,background:`linear-gradient(135deg,${C.red},#8B0000)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:36,margin:"0 auto 20px",boxShadow:"0 8px 32px rgba(206,51,52,.4)" }}>🎖️</div>
         <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:800,fontSize:52,color:C.text,letterSpacing:-1,lineHeight:1 }}>LetsBrag</div>
-        <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:600,fontSize:16,color:C.textDim,letterSpacing:3,textTransform:"uppercase",marginTop:4,marginBottom:8 }}>for U.S. Sailors</div>
-        <div style={{ fontSize:14,color:C.textDim,lineHeight:1.7,marginBottom:32 }}>Your year-round achievement log.<br/>Built for EVAL season. Used all year.</div>
+        <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:600,fontSize:16,color:C.textDim,letterSpacing:3,textTransform:"uppercase",marginTop:4,marginBottom:8 }}>for U.S. Service Members</div>
+        <div style={{ fontSize:14,color:C.textDim,lineHeight:1.7,marginBottom:32 }}>Your year-round military career log.<br/>Built for eval season. Used all year.<br/><span style={{ fontSize:12, color:C.textFaint }}>Navy · Army · Marines · Air Force · Space Force · Coast Guard</span></div>
 
         <button onClick={onGoogleLogin} disabled={loading} style={{ width:"100%",padding:"14px 20px",background:"#fff",color:"#111",border:"none",borderRadius:10,fontWeight:700,fontSize:15,cursor:loading?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:10,marginBottom:12,boxShadow:"0 4px 16px rgba(0,0,0,.3)",opacity:loading?0.7:1 }}>
           {loading?<span className="spin" style={{ display:"inline-block",width:18,height:18,border:"2px solid #ccc",borderTopColor:"#333",borderRadius:"50%" }} />
@@ -1314,7 +1314,7 @@ function LoginScreen({ onGoogleLogin, onDemo, loading }) {
 
         <button onClick={onDemo} style={{ width:"100%",padding:"12px 20px",background:"transparent",color:C.textDim,border:`1px solid ${C.navyBorder}`,borderRadius:10,fontWeight:600,fontSize:14,cursor:"pointer",marginBottom:24 }}>Try Demo (no login)</button>
 
-        <div style={{ fontSize:11,color:C.textFaint,lineHeight:1.6 }}>🔒 Your data is private and encrypted.<br/>Works offline — log wins anywhere, anytime.</div>
+        <div style={{ fontSize:11,color:C.textFaint,lineHeight:1.6 }}>🔒 Your data is private and encrypted.<br/>Works offline — log wins anywhere, anytime.<br/>All 6 branches supported.</div>
       </div>
     </div>
   );
@@ -1540,7 +1540,7 @@ export default function App() {
       <div style={{ background:C.navyMid,borderBottom:`1px solid ${C.navyBorder}`,position:"sticky",top:0,zIndex:100 }}>
         <div style={{ padding:"12px 18px 0",display:"flex",alignItems:"center",justifyContent:"space-between" }}>
           <div style={{ display:"flex",alignItems:"center",gap:10 }}>
-            <div style={{ width:34,height:34,borderRadius:8,background:`linear-gradient(135deg,${C.red},#8B0000)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18 }}>⚓</div>
+            <div style={{ width:34,height:34,borderRadius:8,background:`linear-gradient(135deg,${C.red},#8B0000)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18 }}>{branch?B.emoji:"🎖️"}</div>
             <div>
               <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:800,fontSize:20,color:C.text,letterSpacing:-.5,lineHeight:1 }}>LetsBrag <span style={{ color:C.red,fontSize:14 }}>{appYear}</span></div>
               <div style={{ fontSize:10,color:C.textFaint,lineHeight:1,marginTop:1 }}>{B.emoji} U.S. {B.name}</div>
@@ -1611,7 +1611,7 @@ export default function App() {
               ))}
               <div style={{ background:"rgba(62,137,255,.08)",borderRadius:9,padding:"11px 13px",marginTop:14,borderLeft:`3px solid ${C.blue}` }}>
                 <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:11,color:C.blue,marginBottom:3,letterSpacing:1 }}>⚓ GUIDANCE</div>
-                <div style={{ fontSize:11,color:C.textDim,lineHeight:1.65 }}>Aim for <strong style={{ color:C.text }}>~60% P</strong>, <strong style={{ color:C.text }}>~25% I</strong>, <strong style={{ color:C.text }}>~15% E</strong>. Chiefs look at all three.</div>
+                <div style={{ fontSize:11,color:C.textDim,lineHeight:1.65 }}>{B.pieGuidance||"Aim for ~60% P, ~25% I, ~15% E. Your leadership looks at all three."}</div>
               </div>
             </div>
             <div className="fade-up" style={{ background:C.navyCard,borderRadius:14,padding:20,border:`1px solid ${C.navyBorder}`,animationDelay:"140ms" }}>
@@ -1629,59 +1629,83 @@ export default function App() {
               </div>
             </div>
           </div>
-          {(()=>{
-            const done = tasks.filter(t=>t.status==="Complete");
-            const pCount = tasks.filter(t=>t.pie==="P").length;
-            const iCount = tasks.filter(t=>t.pie==="I").length;
-            const eCount = tasks.filter(t=>t.pie==="E").length;
-            const total  = tasks.length||1;
-            const pScore = Math.min(100, Math.round((done.length/Math.max(8,1))*30));
-            const pieScore = Math.min(30, Math.round(
-              (Math.min(pCount/total,.6)/.6)*10 + (Math.min(iCount/total,.25)/.25)*10 + (Math.min(eCount/total,.15)/.15)*10
-            ));
-            const awardScore = Math.min(20, awards.filter(a=>a.status==="Presented"||a.status==="Approved").length*7);
-            const goalScore  = Math.min(10, goals.filter(g=>g.status==="Complete").length*3);
-            const impactScore= Math.min(10, tasks.filter(t=>t.impact?.trim()).length*2);
-            const total_score= pScore+pieScore+awardScore+goalScore+impactScore;
-            const color = total_score>=75?C.green:total_score>=50?C.gold:C.redLight;
-            return (
-              <div className="fade-up" style={{ background:C.navyCard,borderRadius:14,padding:"16px 18px",marginBottom:18,border:`1px solid ${C.navyBorder}`,animationDelay:"170ms" }}>
-                <div style={{ display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12,flexWrap:"wrap",gap:8 }}>
-                  <div>
-                    <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:15,color:C.text }}>🎯 Promotion Readiness</div>
-                    <div style={{ fontSize:11,color:C.textFaint,marginTop:1 }}>Based on your logged data</div>
+          {/* Goal Tracker Widget — progress bars only */}
+          <div className="fade-up" style={{ background:C.navyCard,borderRadius:14,padding:"16px 18px",marginBottom:18,border:`1px solid ${C.navyBorder}`,animationDelay:"160ms" }}>
+            <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16 }}>
+              <div>
+                <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:15,color:C.text }}>🎯 Goal Tracker</div>
+                <div style={{ fontSize:11,color:C.textFaint,marginTop:1 }}>
+                  {goals.length===0 ? "No goals set yet" : `${goals.filter(g=>g.status==="Complete").length} of ${goals.length} goals complete`}
+                </div>
+              </div>
+              <div style={{ display:"flex",gap:8,alignItems:"center" }}>
+                <button onClick={()=>setActiveTab("goals")} style={{ fontSize:11,color:C.blue,background:"none",border:"none",cursor:"pointer",fontWeight:600 }}>View all →</button>
+                <button onClick={openAddGoal} style={{ background:C.red,color:"#fff",border:"none",padding:"5px 11px",borderRadius:6,fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:12,cursor:"pointer" }}>+ Add</button>
+              </div>
+            </div>
+
+            {goals.length===0 ? (
+              <div style={{ textAlign:"center",padding:"18px 0" }}>
+                <div style={{ fontSize:28,marginBottom:8 }}>🎯</div>
+                <div style={{ fontSize:12,color:C.textDim,marginBottom:12 }}>Set goals to track your career growth.</div>
+                <button onClick={openAddGoal} style={{ background:C.red,color:"#fff",border:"none",padding:"8px 18px",borderRadius:8,fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:13,cursor:"pointer" }}>Set Your First Goal</button>
+              </div>
+            ) : (
+              <div style={{ display:"flex",flexDirection:"column",gap:11 }}>
+                {/* Overall progress bar */}
+                <div>
+                  <div style={{ display:"flex",justifyContent:"space-between",marginBottom:5 }}>
+                    <span style={{ fontSize:12,color:C.textDim,fontWeight:600 }}>Overall Progress</span>
+                    <span style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:13,color:C.green }}>
+                      {Math.round((goals.filter(g=>g.status==="Complete").length/goals.length)*100)}%
+                    </span>
                   </div>
-                  <div style={{ textAlign:"right" }}>
-                    <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:800,fontSize:36,color,lineHeight:1 }}>{total_score}<span style={{ fontSize:16,color:C.textDim }}>/100</span></div>
-                    <div style={{ fontSize:11,color,fontWeight:600,marginTop:2 }}>{total_score>=75?"HIGHLY COMPETITIVE":total_score>=50?"BUILDING PROFILE":"NEEDS WORK"}</div>
+                  <div style={{ background:C.navyBorder,borderRadius:99,height:10,overflow:"hidden" }}>
+                    <div style={{ width:`${Math.round((goals.filter(g=>g.status==="Complete").length/goals.length)*100)}%`,height:"100%",background:`linear-gradient(90deg,${C.red},${C.green})`,borderRadius:99,transition:"width .6s ease" }} />
                   </div>
                 </div>
-                <div style={{ background:C.navyBorder,borderRadius:99,height:8,overflow:"hidden",marginBottom:14 }}>
-                  <div style={{ width:`${total_score}%`,height:"100%",background:`linear-gradient(90deg,${C.red},${color})`,borderRadius:99,transition:"width .8s ease" }} />
-                </div>
-                <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))",gap:8 }}>
-                  {[
-                    {label:"Achievements",score:pScore,max:30,hint:`${done.length} completed`},
-                    {label:"PIE Balance",score:pieScore,max:30,hint:"P/I/E distribution"},
-                    {label:"Awards",score:awardScore,max:20,hint:`${awards.filter(a=>a.status==="Presented"||a.status==="Approved").length} received`},
-                    {label:"Goals Met",score:goalScore,max:10,hint:`${goals.filter(g=>g.status==="Complete").length} completed`},
-                    {label:"Impact Data",score:impactScore,max:10,hint:"Quantified entries"},
-                  ].map(({label,score,max,hint})=>(
-                    <div key={label} style={{ background:C.navyMid,borderRadius:8,padding:"9px 11px" }}>
-                      <div style={{ display:"flex",justifyContent:"space-between",marginBottom:4 }}>
-                        <span style={{ fontSize:11,color:C.textDim }}>{label}</span>
-                        <span style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:12,color:score/max>=.7?C.green:score/max>=.4?C.gold:C.redLight }}>{score}/{max}</span>
+
+                {/* Per-priority progress bars */}
+                {["High","Medium","Low"].map(pri=>{
+                  const pg   = goals.filter(g=>g.priority===pri);
+                  if (!pg.length) return null;
+                  const done = pg.filter(g=>g.status==="Complete").length;
+                  const pct  = Math.round((done/pg.length)*100);
+                  const color= pri==="High"?C.redLight:pri==="Medium"?C.gold:C.textDim;
+                  const bar  = pri==="High"?C.red:pri==="Medium"?C.gold:"#7A8FA8";
+                  const overdue = pg.filter(g=>g.completionDate&&g.status!=="Complete"&&new Date(g.completionDate)<new Date()).length;
+                  return (
+                    <div key={pri}>
+                      <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5 }}>
+                        <div style={{ display:"flex",alignItems:"center",gap:7 }}>
+                          <span style={{ background:PRIORITY[pri]?.bg,color,borderRadius:99,padding:"2px 9px",fontSize:10,fontWeight:700 }}>{pri}</span>
+                          <span style={{ fontSize:11,color:C.textDim }}>{done}/{pg.length} done</span>
+                          {overdue>0&&<span style={{ fontSize:10,color:C.redLight,fontWeight:600 }}>⚠ {overdue} overdue</span>}
+                        </div>
+                        <span style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:12,color }}>{pct}%</span>
                       </div>
-                      <div style={{ background:C.navyBorder,borderRadius:99,height:4,overflow:"hidden" }}>
-                        <div style={{ width:`${(score/max)*100}%`,height:"100%",background:score/max>=.7?C.green:score/max>=.4?C.gold:C.redLight,borderRadius:99 }} />
+                      <div style={{ background:C.navyBorder,borderRadius:99,height:7,overflow:"hidden" }}>
+                        <div style={{ width:`${pct}%`,height:"100%",background:bar,borderRadius:99,transition:"width .6s ease" }} />
                       </div>
-                      <div style={{ fontSize:10,color:C.textFaint,marginTop:3 }}>{hint}</div>
                     </div>
+                  );
+                })}
+
+                {/* Status summary pills */}
+                <div style={{ display:"flex",gap:8,flexWrap:"wrap",marginTop:4 }}>
+                  {[
+                    {label:"Complete",   count:goals.filter(g=>g.status==="Complete").length,    bg:"rgba(46,204,113,.12)",  color:C.green},
+                    {label:"In Progress",count:goals.filter(g=>g.status==="In Progress").length, bg:"rgba(62,137,255,.12)",  color:"#60A5FA"},
+                    {label:"Not Started",count:goals.filter(g=>g.status==="Not Started").length, bg:"rgba(122,143,168,.1)",  color:C.textDim},
+                    {label:"Overdue",    count:goals.filter(g=>g.completionDate&&g.status!=="Complete"&&new Date(g.completionDate)<new Date()).length, bg:"rgba(206,51,52,.1)", color:C.redLight},
+                  ].filter(s=>s.count>0).map(s=>(
+                    <div key={s.label} style={{ background:s.bg,borderRadius:99,padding:"4px 11px",fontSize:11,color:s.color,fontWeight:600 }}>{s.label}: {s.count}</div>
                   ))}
                 </div>
               </div>
-            );
-          })()}
+            )}
+          </div>
+
           {keyDates.length>0&&(()=>{
             const upcoming = [...keyDates].sort((a,b)=>new Date(a.date)-new Date(b.date)).filter(d=>new Date(d.date)>=new Date()).slice(0,3);
             if (!upcoming.length) return null;
@@ -2035,7 +2059,7 @@ export default function App() {
             <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:15,color:C.text,marginBottom:2 }}>🎖️ I Love Me Book</div>
             <div style={{ fontSize:12,color:C.textDim,lineHeight:1.6 }}>Upload awards, commendation letters, ceremony photos, qual cards, and NEC certs. Everything in one place — for boards, packages, and your own pride.</div>
           </div>
-          <FileGallery files={ilovemeFiles} setFiles={setIlovemeFiles} categories={ILOVE_CATS} emptyIcon="🎖️" emptyMsg="Upload your awards, certs, photos, and commendation letters here." />
+          <FileGallery files={ilovemeFiles} setFiles={setIlovemeFiles} categories={B.iloveCats||ILOVE_CATS} emptyIcon="🎖️" emptyMsg="Upload your awards, certs, photos, and commendation letters here." />
         </>}
 
         {activeTab==="docs"&&<>
@@ -2043,7 +2067,7 @@ export default function App() {
             <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:15,color:C.text,marginBottom:2 }}>📂 Career Documents</div>
             <div style={{ fontSize:12,color:C.textDim,lineHeight:1.6 }}>Store your career roadmap, rate training manual, NAVADMINs, orders, transfer docs, personal statement, and anything you need on the go.</div>
           </div>
-          <FileGallery files={docFiles} setFiles={setDocFiles} categories={DOC_CATS} emptyIcon="📂" emptyMsg="Upload your career roadmap, rate manual, orders, and important career documents." />
+          <FileGallery files={docFiles} setFiles={setDocFiles} categories={B.docCats||DOC_CATS} emptyIcon="📂" emptyMsg="Upload your career roadmap, rate manual, orders, and important career documents." />
         </>}
 
         {activeTab==="profile"&&<ProfileScreen profile={profile} setProfile={setProfile} user={user} onLogout={handleLogout} appYear={appYear} setAppYear={setAppYear} B={B} onChangeBranch={()=>setBranch("")} />}
@@ -2051,7 +2075,7 @@ export default function App() {
       </div>
 
       {activeTab!=="profile"&&<QuickLog onSave={quickSave} />}
-      {modal&&<AchModal task={modal.task} isEdit={modal.isEdit} onSave={saveTask} onDelete={delTask} onClose={closeModal} />}
+      {modal&&<AchModal task={modal.task} isEdit={modal.isEdit} onSave={saveTask} onDelete={delTask} onClose={closeModal} B={B} />}
       {goalModal&&<GoalModal goal={goalModal.goal} isEdit={goalModal.isEdit} onSave={saveGoal} onDelete={delGoal} onClose={closeGoalModal} />}
       {awardModal&&<AwardModal award={awardModal.award} isEdit={awardModal.isEdit} onSave={saveAward} onDelete={delAward} onClose={closeAwardModal} B={B} />}
       {keyDateModal&&<KeyDateModal kd={keyDateModal.kd} isEdit={keyDateModal.isEdit} onSave={saveDate} onDelete={delDate} onClose={closeDateModal} B={B} />}
