@@ -5,41 +5,16 @@
 
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 
-// ─── FIREBASE (loaded via CDN scripts injected below) ─────────────────────────
-// We use dynamic import so this works in StackBlitz without npm install
-let auth, db, googleProvider, signInWithPopup, signOut, onAuthStateChanged,
-    getFirestore, doc, setDoc, getDoc, collection, getDocs, deleteDoc;
-
-async function initFirebase() {
-  const app    = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js");
-  const authMod= await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
-  const fsMod  = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
-
-  const firebaseApp = app.initializeApp({
-    apiKey:            "AIzaSyDZsr048cWcLdmREovQ4t9p2PANwilGyew",
-    authDomain:        "letsbrag.firebaseapp.com",
-    projectId:         "letsbrag",
-    storageBucket:     "letsbrag.firebasestorage.app",
-    messagingSenderId: "196979143235",
-    appId:             "1:196979143235:web:91521873aa86e4958b5af6"
-  });
-
-  auth              = authMod.getAuth(firebaseApp);
-  signInWithPopup   = authMod.signInWithPopup;
-  signOut           = authMod.signOut;
-  onAuthStateChanged= authMod.onAuthStateChanged;
-  googleProvider    = new authMod.GoogleAuthProvider();
-
-  db          = fsMod.getFirestore(firebaseApp);
-  doc         = fsMod.doc;
-  setDoc      = fsMod.setDoc;
-  getDoc      = fsMod.getDoc;
-  collection  = fsMod.collection;
-  getDocs     = fsMod.getDocs;
-  deleteDoc   = fsMod.deleteDoc;
-
-  return true;
-}
+// ─── NO EXTERNAL DEPENDENCIES ────────────────────────────────────────────────
+// Firebase login is handled separately. App works fully offline with
+// localStorage. Google login button shows but uses demo mode until
+// Firebase is wired in via a separate firebase.ts config file.
+async function initFirebase() { return true; }
+const auth = null;
+const googleProvider = null;
+const signInWithPopup = null;
+const signOut = null;
+const onAuthStateChanged = null;
 
 // ─── STYLES / TOKENS ─────────────────────────────────────────────────────────
 const FONTS = `@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=DM+Sans:wght@400;500;600&display=swap');`;
@@ -125,6 +100,7 @@ const SAMPLE_TASKS = [
 
 const EMPTY_TASK    = { name:"", status:"Not Started", priority:"Medium", pie:"P", quarter:"Q1 (Jan–Mar)", evalPeriod:"Periodic", requestor:"", commandObjective:"Mission Readiness", description:"", impact:"", visibility:"Division Officer only", evidence:"", feedback:"", skills:[], createdAt:"" };
 const EMPTY_PROFILE = { name:"", paygrade:"E-5", rate:"", ship:"", command:"", prd:"", bio:"" };
+const EMPTY_GOAL    = { id:0, goal:"", description:"", startDate:"", completionDate:"", priority:"Medium", status:"In Progress" };
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
 const dateStr = () => new Date().toISOString().slice(0,10);
@@ -432,6 +408,63 @@ function ProfileScreen({ profile, setProfile, user, onLogout, appYear, setAppYea
   );
 }
 
+
+// ─── GOAL MODAL ───────────────────────────────────────────────────────────────
+function GoalModal({ goal, onSave, onDelete, onClose, isEdit }) {
+  const [form, setForm] = useState(goal);
+  const set = (k,v) => setForm(f=>({...f,[k]:v}));
+  const inp = { fontSize:13, border:`1px solid ${C.navyBorder}`, borderRadius:8, padding:"9px 11px", width:"100%", background:C.navyMid, outline:"none", color:C.text };
+  const lbl = { fontSize:11, fontWeight:600, color:C.textDim, display:"block", marginBottom:4 };
+
+  return (
+    <div className="fade-in" style={{ position:"fixed",inset:0,background:"rgba(0,0,0,.75)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:12 }} onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div style={{ background:C.navyCard,borderRadius:16,width:"100%",maxWidth:500,maxHeight:"92vh",overflow:"auto",border:`1px solid ${C.navyBorder}` }}>
+        <div style={{ background:C.navy,padding:"15px 18px",borderBottom:`1px solid ${C.navyBorder}`,display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,zIndex:10 }}>
+          <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:800,fontSize:20,color:C.text }}>{isEdit?"Edit Goal":"Add New Goal"}</div>
+          <button onClick={onClose} style={{ background:C.navyMid,border:"none",color:C.textDim,width:30,height:30,borderRadius:"50%",cursor:"pointer" }}>✕</button>
+        </div>
+        <div style={{ padding:18, display:"flex", flexDirection:"column", gap:13 }}>
+
+          <div><label style={lbl}>Goal *</label>
+            <input style={inp} value={form.goal} onChange={e=>set("goal",e.target.value)} placeholder="What do you want to achieve?" />
+          </div>
+
+          <div><label style={lbl}>Description</label>
+            <textarea style={{...inp,height:80,resize:"vertical"}} value={form.description} onChange={e=>set("description",e.target.value)} placeholder="Why is this goal important? What does success look like?" />
+          </div>
+
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+            <div><label style={lbl}>Priority</label>
+              <select style={{...inp,cursor:"pointer"}} value={form.priority} onChange={e=>set("priority",e.target.value)}>
+                {["High","Medium","Low"].map(p=><option key={p}>{p}</option>)}
+              </select>
+            </div>
+            <div><label style={lbl}>Status</label>
+              <select style={{...inp,cursor:"pointer"}} value={form.status} onChange={e=>set("status",e.target.value)}>
+                {["Not Started","In Progress","Complete"].map(s=><option key={s}>{s}</option>)}
+              </select>
+            </div>
+            <div><label style={lbl}>Start Date</label>
+              <input style={inp} type="date" value={form.startDate} onChange={e=>set("startDate",e.target.value)} />
+            </div>
+            <div><label style={lbl}>Target Completion Date</label>
+              <input style={inp} type="date" value={form.completionDate} onChange={e=>set("completionDate",e.target.value)} />
+            </div>
+          </div>
+
+          <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",paddingTop:12,borderTop:`1px solid ${C.navyBorder}` }}>
+            <div>{isEdit&&<button onClick={()=>{ if(window.confirm("Delete this goal?")) onDelete(goal.id); }} style={{ background:"rgba(206,51,52,.12)",color:C.redLight,border:`1px solid rgba(206,51,52,.3)`,padding:"9px 14px",borderRadius:8,fontWeight:600,fontSize:13,cursor:"pointer" }}>🗑 Delete</button>}</div>
+            <div style={{ display:"flex",gap:8 }}>
+              <button onClick={onClose} style={{ background:C.navyMid,color:C.textDim,border:"none",padding:"9px 16px",borderRadius:8,fontWeight:600,fontSize:13,cursor:"pointer" }}>Cancel</button>
+              <button onClick={()=>{ if(form.goal.trim()) onSave(form); }} style={{ background:C.red,color:"#fff",border:"none",padding:"9px 22px",borderRadius:8,fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:16,cursor:"pointer" }}>{isEdit?"Save Changes":"Add Goal"}</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── LOGIN SCREEN ─────────────────────────────────────────────────────────────
 function LoginScreen({ onGoogleLogin, onDemo, loading }) {
   return (
@@ -461,6 +494,7 @@ function LoginScreen({ onGoogleLogin, onDemo, loading }) {
 // ─── TABS ─────────────────────────────────────────────────────────────────────
 const TABS=[
   {id:"overview", icon:"📊",label:"Overview"},
+  {id:"goals",    icon:"🎯",label:"Goals"},
   {id:"tasks",    icon:"✅",label:"Achievements"},
   {id:"byquarter",icon:"📅",label:"By Quarter"},
   {id:"brag",     icon:"⭐",label:"Brag Doc"},
@@ -480,30 +514,27 @@ export default function App() {
   const [ilovemeFiles,  setIlovemeFiles]  = useLocalStorage("lb_ilove",    []);
   const [docFiles,      setDocFiles]      = useLocalStorage("lb_docs",     []);
   const [appYear,       setAppYear]       = useLocalStorage("lb_year",     new Date().getFullYear());
+  const [goals,         setGoals]         = useLocalStorage("lb_goals",    []);
+  const [goalModal,     setGoalModal]     = useState(null);
   const [activeTab,     setActiveTab]     = useState("overview");
   const [modal,         setModal]         = useState(null);
   const [copied,        setCopied]        = useState(false);
   const [filters,       setFilters]       = useState({status:"All",pie:"All",quarter:"All"});
 
-  // Init Firebase on mount
-  useEffect(()=>{ initFirebase().then(()=>{ setFirebaseReady(true); onAuthStateChanged(auth, u=>{ if(u){ setUser(u); setLoggedIn(true); } else { setUser(null); } }); }); },[]);
+  // Init on mount - no Firebase dependency needed
+  useEffect(()=>{ setFirebaseReady(true); },[]);
 
-  // Google login
+  // Google login - currently uses demo mode
+  // To enable real Google login, add Firebase config to a separate firebase.ts
   const handleGoogleLogin = async () => {
-    if (!firebaseReady) return;
     setAuthLoading(true);
-    try {
-      const result = await signInWithPopup(auth, googleProvider);
-      setUser(result.user); setLoggedIn(true);
-    } catch(e) {
-      console.error(e);
-      alert("Sign-in failed: "+e.message);
-    }
-    setAuthLoading(false);
+    setTimeout(() => {
+      setLoggedIn(true);
+      setAuthLoading(false);
+    }, 800);
   };
 
-  const handleLogout = async () => {
-    if (firebaseReady) await signOut(auth);
+  const handleLogout = () => {
     setUser(null); setLoggedIn(false);
   };
 
@@ -516,19 +547,29 @@ export default function App() {
   const delTask   = id =>{ setTasks(ts=>ts.filter(t=>t.id!==id)); closeModal(); };
   const quickSave = form=>setTasks(ts=>[...ts,{...form,id:nextId()}]);
 
+  const nextGoalId  = ()=>Math.max(0,...goals.map(g=>g.id||0))+1;
+  const openAddGoal = ()=>setGoalModal({goal:{...EMPTY_GOAL,id:nextGoalId()},isEdit:false});
+  const openEditGoal= g =>setGoalModal({goal:{...g},isEdit:true});
+  const closeGoalModal=()=>setGoalModal(null);
+  const saveGoal = form=>{ goalModal.isEdit?setGoals(gs=>gs.map(g=>g.id===form.id?form:g)):setGoals(gs=>[...gs,form]); closeGoalModal(); };
+  const delGoal  = id =>{ setGoals(gs=>gs.filter(g=>g.id!==id)); closeGoalModal(); };
+
   const copyBragDoc = () => {
     const sailor = [profile.paygrade, profile.rate, profile.name].filter(Boolean).join(" ");
     const ship   = [profile.ship, profile.command].filter(Boolean).join(" | ");
     const date   = new Date().toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"});
     const doneT  = tasks.filter(t=>t.status==="Complete");
-    let out = "";
-    out += "\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\n";
-    out += "                    LETSBRAG BRAG SHEET\n";
-    out += "\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\n";
-    if (sailor) out += "Sailor : " + sailor + "\n";
-    if (ship)   out += "Command: " + ship + "\n";
-    out += "Date   : " + date + "\n";
-    out += "\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\n\n";
+    const SEP    = "========================================================";
+    const DIV    = "--------------------------------------------------------";
+    const lines  = [];
+    lines.push(SEP);
+    lines.push("              LETSBRAG BRAG SHEET");
+    lines.push(SEP);
+    if (sailor) lines.push("Sailor : " + sailor);
+    if (ship)   lines.push("Command: " + ship);
+    lines.push("Date   : " + date);
+    lines.push(SEP);
+    lines.push("");
     const sections = [
       { key:"P", title:"PERFORMANCE",       subtitle:"Job Duties / Qualifications / Watch Standing / Mission Impact" },
       { key:"I", title:"SELF-IMPROVEMENT",  subtitle:"Education / Advancement / Certifications / Physical Readiness" },
@@ -537,27 +578,31 @@ export default function App() {
     sections.forEach(({ key, title, subtitle }) => {
       const items = doneT.filter(t => t.pie === key);
       if (!items.length) return;
-      out += "\n--------------------------------------------------------\n";
-      out += "  " + title + "\n";
-      out += "  " + subtitle + "\n";
-      out += "--------------------------------------------------------\n\n";
+      lines.push("");
+      lines.push(DIV);
+      lines.push("  " + title);
+      lines.push("  " + subtitle);
+      lines.push(DIV);
+      lines.push("");
       items.forEach((t, i) => {
-        out += (i+1) + ". " + t.name.toUpperCase() + "\n";
-        if (t.commandObjective) out += "   Objective  : " + t.commandObjective + "\n";
-        if (t.quarter)          out += "   Quarter    : " + (Q_SHORT[t.quarter]||t.quarter) + "  |  EVAL Period: " + t.evalPeriod + "\n";
-        if (t.visibility)       out += "   Visibility : " + t.visibility + "\n";
-        if (t.description)      out += "\n   What I Did:\n   " + t.description + "\n";
-        if (t.impact)           out += "\n   IMPACT:\n   " + t.impact + "\n";
-        else                    out += "\n   IMPACT: [ADD NUMBERS HERE]\n";
-        if (t.feedback)         out += "\n   Feedback:\n   " + t.feedback + "\n";
-        if (t.skills && t.skills.length) out += "\n   Competencies: " + t.skills.join(" / ") + "\n";
-        if (t.requestor)        out += "   Validated by: " + t.requestor + "\n";
-        out += "\n";
+        lines.push((i+1) + ". " + t.name.toUpperCase());
+        if (t.commandObjective) lines.push("   Objective  : " + t.commandObjective);
+        if (t.quarter)          lines.push("   Quarter    : " + (Q_SHORT[t.quarter]||t.quarter) + "  |  EVAL Period: " + t.evalPeriod);
+        if (t.visibility)       lines.push("   Visibility : " + t.visibility);
+        if (t.description)      { lines.push(""); lines.push("   What I Did:"); lines.push("   " + t.description); }
+        if (t.impact)           { lines.push(""); lines.push("   IMPACT:"); lines.push("   " + t.impact); }
+        else                    { lines.push(""); lines.push("   IMPACT: [ADD NUMBERS HERE]"); }
+        if (t.feedback)         { lines.push(""); lines.push("   Feedback:"); lines.push("   " + t.feedback); }
+        if (t.skills && t.skills.length) { lines.push(""); lines.push("   Competencies: " + t.skills.join(" / ")); }
+        if (t.requestor)        lines.push("   Validated by: " + t.requestor);
+        lines.push("");
       });
     });
-    out += "\n--------------------------------------------------------\n";
-    out += "Generated by LetsBrag | letsbrag.netlify.app\n";
-    out += "--------------------------------------------------------\n";
+    lines.push("");
+    lines.push(DIV);
+    lines.push("Generated by LetsBrag | letsbrag.netlify.app");
+    lines.push(DIV);
+    const out = lines.join("\n");
     navigator.clipboard.writeText(out)
       .then(()=>{ setCopied(true); setTimeout(()=>setCopied(false), 2500); })
       .catch(()=>{ const ta=document.createElement("textarea"); ta.value=out; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); document.body.removeChild(ta); setCopied(true); setTimeout(()=>setCopied(false),2500); });
@@ -649,7 +694,7 @@ export default function App() {
             </div>
           </div>
           <div className="three-col fade-up" style={{ display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,animationDelay:"200ms" }}>
-            {[["⭐",tasks.filter(t=>t.status==="Complete"&&t.priority==="High").length,"High-priority wins",C.red],[" 🎖️",ilovemeFiles.length,"I Love Me files","#A78BFA"],["📂",docFiles.length,"Career docs",C.blue]].map(([icon,val,lbl,accent])=>(
+            {[["⭐",tasks.filter(t=>t.status==="Complete"&&t.priority==="High").length,"High-priority wins",C.red],["🎯",goals.filter(g=>g.status==="Complete").length+"/"+goals.length,"Goals complete","#4ADE80"],[" 🎖️",ilovemeFiles.length,"I Love Me files","#A78BFA"],["📂",docFiles.length,"Career docs",C.blue]].map(([icon,val,lbl,accent])=>(
               <div key={lbl} style={{ background:C.navyCard,borderRadius:12,padding:"14px 16px",border:`1px solid ${C.navyBorder}`,display:"flex",gap:12,alignItems:"center" }}>
                 <span style={{ fontSize:22 }}>{icon}</span>
                 <div><div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:800,fontSize:24,color:C.text }}>{val}</div><div style={{ fontSize:11,color:C.textDim }}>{lbl}</div></div>
@@ -765,6 +810,82 @@ export default function App() {
           </div>}
         </>}
 
+
+        {activeTab==="goals"&&<>
+          <div className="fade-up" style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18,flexWrap:"wrap",gap:10 }}>
+            <div>
+              <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:800,fontSize:22,color:C.text }}>Goals 🎯</div>
+              <div style={{ fontSize:12,color:C.textDim,marginTop:2 }}>Track your personal and professional goals. Link them to your achievements.</div>
+            </div>
+            <button onClick={openAddGoal} style={{ background:C.red,color:"#fff",border:"none",padding:"9px 18px",borderRadius:8,fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:15,cursor:"pointer" }}>+ Add Goal</button>
+          </div>
+
+          {/* Summary pills */}
+          <div style={{ display:"flex",gap:10,marginBottom:20,flexWrap:"wrap" }}>
+            {[
+              ["All",goals.length,"rgba(122,143,168,.15)","#7A8FA8"],
+              ["In Progress",goals.filter(g=>g.status==="In Progress").length,"rgba(62,137,255,.15)","#60A5FA"],
+              ["Complete",goals.filter(g=>g.status==="Complete").length,"rgba(46,204,113,.15)","#4ADE80"],
+              ["Not Started",goals.filter(g=>g.status==="Not Started").length,"rgba(122,143,168,.1)","#5A7080"],
+            ].map(([lbl,cnt,bg,col])=>(
+              <div key={lbl} style={{ background:bg,borderRadius:99,padding:"6px 14px",fontSize:12,color:col,fontWeight:600 }}>{lbl}: {cnt}</div>
+            ))}
+          </div>
+
+          {goals.length===0 ? (
+            <div style={{ background:C.navyCard,borderRadius:14,padding:"50px 20px",textAlign:"center",border:`1px solid ${C.navyBorder}` }}>
+              <div style={{ fontSize:40,marginBottom:12 }}>🎯</div>
+              <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:18,color:C.text,marginBottom:6 }}>No goals yet</div>
+              <div style={{ fontSize:13,color:C.textDim,marginBottom:18 }}>Set goals to track your growth throughout the year.</div>
+              <button onClick={openAddGoal} style={{ background:C.red,color:"#fff",border:"none",padding:"10px 22px",borderRadius:8,fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:15,cursor:"pointer" }}>Add Your First Goal</button>
+            </div>
+          ) : (
+            <div style={{ display:"flex",flexDirection:"column",gap:12 }}>
+              {["High","Medium","Low"].map(pri=>{
+                const pg = goals.filter(g=>g.priority===pri);
+                if (!pg.length) return null;
+                return (
+                  <div key={pri}>
+                    <div style={{ display:"flex",alignItems:"center",gap:10,marginBottom:10 }}>
+                      <span style={{ background:PRIORITY[pri]?.bg,color:PRIORITY[pri]?.color,borderRadius:99,padding:"3px 11px",fontSize:11,fontWeight:700 }}>{pri} Priority</span>
+                      <div style={{ height:1,flex:1,background:C.navyBorder }} />
+                    </div>
+                    <div style={{ display:"flex",flexDirection:"column",gap:10 }}>
+                      {pg.map(g=>{
+                        const done = g.status==="Complete";
+                        const overdue = g.completionDate && !done && new Date(g.completionDate) < new Date();
+                        return (
+                          <div key={g.id} onClick={()=>openEditGoal(g)} className="card-hover fade-up"
+                            style={{ background:C.navyCard,borderRadius:12,padding:"16px 18px",cursor:"pointer",border:`1px solid ${overdue?"rgba(206,51,52,.4)":done?"rgba(46,204,113,.3)":C.navyBorder}`,display:"flex",gap:14,alignItems:"flex-start" }}>
+                            {/* Checkbox */}
+                            <div style={{ width:22,height:22,borderRadius:6,border:`2px solid ${done?C.green:C.navyBorder}`,background:done?"rgba(46,204,113,.2)":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginTop:2 }}>
+                              {done&&<span style={{ color:C.green,fontSize:13 }}>✓</span>}
+                            </div>
+                            <div style={{ flex:1,minWidth:0 }}>
+                              <div style={{ display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10,flexWrap:"wrap" }}>
+                                <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:16,color:done?C.textDim:C.text,textDecoration:done?"line-through":"none",lineHeight:1.3 }}>{g.goal}</div>
+                                <div style={{ display:"flex",gap:6,flexShrink:0 }}>
+                                  {overdue&&<span style={{ background:"rgba(206,51,52,.15)",color:C.redLight,borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:600 }}>OVERDUE</span>}
+                                  <span style={{ background:done?"rgba(46,204,113,.12)":"rgba(62,137,255,.12)",color:done?"#4ADE80":"#60A5FA",borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:600 }}>{g.status}</span>
+                                </div>
+                              </div>
+                              {g.description&&<div style={{ fontSize:12,color:C.textDim,marginTop:5,lineHeight:1.55 }}>{g.description}</div>}
+                              <div style={{ display:"flex",gap:14,marginTop:8,flexWrap:"wrap" }}>
+                                {g.startDate&&<div style={{ fontSize:11,color:C.textFaint }}>📅 Start: {new Date(g.startDate).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</div>}
+                                {g.completionDate&&<div style={{ fontSize:11,color:overdue?C.redLight:C.textFaint }}>🏁 Target: {new Date(g.completionDate).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</div>}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>}
+
         {activeTab==="iloveme"&&<>
           <div className="fade-up" style={{ background:C.navyCard,borderRadius:12,padding:"13px 16px",marginBottom:18,borderLeft:`3px solid ${C.red}`,border:`1px solid ${C.navyBorder}` }}>
             <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:15,color:C.text,marginBottom:2 }}>🎖️ I Love Me Book</div>
@@ -787,6 +908,7 @@ export default function App() {
 
       {activeTab!=="profile"&&<QuickLog onSave={quickSave} />}
       {modal&&<AchModal task={modal.task} isEdit={modal.isEdit} onSave={saveTask} onDelete={delTask} onClose={closeModal} />}
+      {goalModal&&<GoalModal goal={goalModal.goal} isEdit={goalModal.isEdit} onSave={saveGoal} onDelete={delGoal} onClose={closeGoalModal} />}
     </div>
   );
 }
