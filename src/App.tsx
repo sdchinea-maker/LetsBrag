@@ -21,12 +21,12 @@ import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 
 // ─── FIREBASE CONFIG (replace with your values) ───────────────────────────────
 const FIREBASE_CONFIG = {
-  apiKey:            "YOUR_API_KEY",
-  authDomain:        "YOUR_PROJECT.firebaseapp.com",
-  projectId:         "YOUR_PROJECT_ID",
-  storageBucket:     "YOUR_PROJECT.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId:             "YOUR_APP_ID"
+  apiKey:            "AIzaSyDZsr048cWcLdmREovQ4t9p2PANwilGyew",
+  authDomain:        "letsbrag.firebaseapp.com",
+  projectId:         "letsbrag",
+  storageBucket:     "letsbrag.firebasestorage.app",
+  messagingSenderId: "196979143235",
+  appId:             "1:196979143235:web:91521873aa86e4958b5af6"
 };
 // ─────────────────────────────────────────────────────────────────────────────
 
