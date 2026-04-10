@@ -5,6 +5,19 @@
 
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 
+// ─── AI CONFIGURATION ────────────────────────────────────────────────────────
+// Each user provides their own free Anthropic API key.
+// Keys are stored only in their own browser — never shared or sent anywhere else.
+// Get a free key at: console.anthropic.com (free tier = $5 credit, plenty for personal use)
+const getApiKey = () => { try { return localStorage.getItem("lb_apikey") || ""; } catch { return ""; } };
+const AI_ENABLED = () => getApiKey().startsWith("sk-ant");
+const AI_HEADERS = () => ({
+  "Content-Type": "application/json",
+  "x-api-key": getApiKey(),
+  "anthropic-version": "2023-06-01",
+  "anthropic-dangerous-direct-browser-access": "true",
+});
+
 // ─── NO EXTERNAL DEPENDENCIES ────────────────────────────────────────────────
 // Firebase login is handled separately. App works fully offline with
 // localStorage. Google login button shows but uses demo mode until
@@ -485,7 +498,7 @@ function QuickLog({ onSave }) {
 }
 
 // ─── PROFILE ──────────────────────────────────────────────────────────────────
-function ProfileScreen({ profile, setProfile, user, onLogout, appYear, setAppYear, B, onChangeBranch }) {
+function ProfileScreen({ profile, setProfile, user, onLogout, appYear, setAppYear, B, onChangeBranch, apiEnabled, onOpenApiSetup }) {
   const [editing,setEditing]=useState(false), [form,setForm]=useState(profile);
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
   const save=()=>{ setProfile(form); setEditing(false); };
@@ -508,6 +521,9 @@ function ProfileScreen({ profile, setProfile, user, onLogout, appYear, setAppYea
       {!editing?(
         <div style={{ display:"flex",gap:10,flexWrap:"wrap" }}>
           <button onClick={()=>{setForm(profile);setEditing(true);}} style={{ flex:1,padding:"11px",background:C.red,color:"#fff",border:"none",borderRadius:10,fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:16,cursor:"pointer" }}>Edit Profile</button>
+          <button onClick={onOpenApiSetup} style={{ padding:"11px 14px",background:apiEnabled?"rgba(46,204,113,.15)":"rgba(124,99,255,.15)",color:apiEnabled?C.green:"#A78BFA",border:`1px solid ${apiEnabled?"rgba(46,204,113,.3)":"rgba(124,99,255,.3)"}`,borderRadius:10,fontWeight:600,fontSize:12,cursor:"pointer",whiteSpace:"nowrap" }}>
+            {apiEnabled?"🤖 AI On":"🤖 Enable AI"}
+          </button>
           <button onClick={onChangeBranch} style={{ padding:"11px 14px",background:C.navyMid,color:C.textDim,border:`1px solid ${C.navyBorder}`,borderRadius:10,fontWeight:600,fontSize:12,cursor:"pointer" }}>{B.emoji} Change Branch</button>
           <button onClick={onLogout} style={{ padding:"11px 14px",background:C.navyMid,color:C.textDim,border:`1px solid ${C.navyBorder}`,borderRadius:10,fontWeight:600,fontSize:13,cursor:"pointer" }}>Sign Out</button>
         </div>
@@ -617,6 +633,7 @@ function BulletModal({ task, branch, onClose, onApply }) {
 
   const generate = async () => {
     if (!input.trim()) return;
+    if (!AI_ENABLED()) { setError("⚙️ AI features need an API key. Add your Anthropic API key to the ANTHROPIC_API_KEY constant at the top of App.tsx. Get a free key at console.anthropic.com"); return; }
     if (offline) { setError("No internet connection. Your achievement is saved — generate bullets when back online."); return; }
     setLoading(true); setError(""); setBullets([]);
     try {
@@ -637,7 +654,7 @@ Return ONLY a JSON array of 3 strings, no other text. Example format:
 
       const res = await fetch("https://api.anthropic.com/v1/messages", {
         method:"POST",
-        headers:{"Content-Type":"application/json"},
+        headers:AI_HEADERS(),
         body: JSON.stringify({
           model:"claude-sonnet-4-20250514",
           max_tokens:500,
@@ -668,7 +685,14 @@ Return ONLY a JSON array of 3 strings, no other text. Example format:
           <button onClick={onClose} style={{ background:C.navyMid,border:"none",color:C.textDim,width:30,height:30,borderRadius:"50%",cursor:"pointer" }}>✕</button>
         </div>
         <div style={{ padding:18 }}>
-          {offline && (
+          {!AI_ENABLED()&&(
+            <div style={{ background:"rgba(124,99,255,.12)",border:`1px solid rgba(124,99,255,.3)`,borderRadius:9,padding:"12px 14px",marginBottom:14 }}>
+              <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:13,color:"#A78BFA",marginBottom:6 }}>🤖 AI Key Required</div>
+              <div style={{ fontSize:12,color:C.textDim,marginBottom:10,lineHeight:1.6 }}>To generate AI bullets you need a free Anthropic API key. Takes 2 minutes — free tier gives you plenty of credits for personal use.</div>
+              <button onClick={()=>{ onClose(); }} style={{ background:"#A78BFA",color:"#000",border:"none",padding:"8px 16px",borderRadius:8,fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:13,cursor:"pointer" }}>Go to Profile → Enable AI</button>
+            </div>
+          )}
+          {offline && AI_ENABLED() && (
             <div style={{ background:"rgba(245,166,35,.1)",border:`1px solid rgba(245,166,35,.3)`,borderRadius:8,padding:"10px 13px",marginBottom:14,fontSize:12,color:C.gold }}>
               📵 You're offline. Log your achievement now and generate bullets when connected.
             </div>
@@ -823,6 +847,7 @@ function CoachChat({ messages, setMessages, input, setInput, loading, setLoading
 
   const send = async () => {
     if (!input.trim() || loading) return;
+    if (!AI_ENABLED()) { setMessages(m=>[...m,{role:"assistant",content:"⚙️ AI features need an API key to work. Add your Anthropic API key to the ANTHROPIC_API_KEY constant at the top of App.tsx. Get a free key at console.anthropic.com"}]); setInput(""); return; }
     if (!navigator.onLine) { setMessages(m=>[...m,{role:"assistant",content:"📵 I need an internet connection to respond. Log your question and ask me when you're back online."}]); setInput(""); return; }
     const userMsg = {role:"user",content:input};
     setMessages(m=>[...m,userMsg]);
@@ -853,7 +878,7 @@ function CoachChat({ messages, setMessages, input, setInput, loading, setLoading
       const history = messages.slice(-10).map(m=>({role:m.role,content:m.content}));
       const res = await fetch("https://api.anthropic.com/v1/messages",{
         method:"POST",
-        headers:{"Content-Type":"application/json"},
+        headers:AI_HEADERS(),
         body: JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,system:systemPrompt,messages:[...history,userMsg]})
       });
       const data = await res.json();
@@ -1004,6 +1029,7 @@ function TransitionAssistant({ tasks, awards, goals, profile, branch, B }) {
   const [copied, setCopied] = useState("");
 
   const generate = async (type) => {
+    if (!AI_ENABLED()) { alert("⚙️ AI features need an API key. Add your Anthropic API key to ANTHROPIC_API_KEY at the top of App.tsx. Get a free key at console.anthropic.com"); return; }
     if (!navigator.onLine) { alert("Internet connection required for AI generation."); return; }
     setLoading(true);
     const done = tasks.filter(t=>t.status==="Complete");
@@ -1046,7 +1072,7 @@ function TransitionAssistant({ tasks, awards, goals, profile, branch, B }) {
     try {
       const res = await fetch("https://api.anthropic.com/v1/messages", {
         method:"POST",
-        headers:{"Content-Type":"application/json"},
+        headers:AI_HEADERS(),
         body: JSON.stringify({ model:"claude-sonnet-4-20250514", max_tokens:2000, messages:[{role:"user",content:prompt}] })
       });
       const data = await res.json();
@@ -1153,6 +1179,7 @@ function PackageBuilder({ tasks, awards, goals, profile, keyDates, B }) {
   const generate = async () => {
     const done = tasks.filter(t=>t.status==="Complete");
     if (!done.length) { alert("Log some completed achievements first!"); return; }
+    if (!AI_ENABLED()) { alert("⚙️ AI features need an API key. Add your Anthropic API key to ANTHROPIC_API_KEY at the top of App.tsx. Get a free key at console.anthropic.com"); return; }
     if (!navigator.onLine) { alert("Internet connection required."); return; }
     setLoading(true); setOutput("");
     try {
@@ -1183,7 +1210,7 @@ function PackageBuilder({ tasks, awards, goals, profile, keyDates, B }) {
 
       const res = await fetch("https://api.anthropic.com/v1/messages", {
         method:"POST",
-        headers:{"Content-Type":"application/json"},
+        headers:AI_HEADERS(),
         body: JSON.stringify({ model:"claude-sonnet-4-20250514", max_tokens:1500, messages:[{role:"user",content:promptLines.join("\n")}] })
       });
       const data = await res.json();
@@ -1234,6 +1261,111 @@ function PackageBuilder({ tasks, awards, goals, profile, keyDates, B }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+
+// ─── API KEY SETUP MODAL ──────────────────────────────────────────────────────
+function ApiKeyModal({ onClose, onSave }) {
+  const [key,     setKey]     = useState(localStorage.getItem("lb_apikey")||"");
+  const [testing, setTesting] = useState(false);
+  const [status,  setStatus]  = useState(""); // "ok" | "fail" | ""
+
+  const test = async () => {
+    if (!key.startsWith("sk-ant")) { setStatus("fail"); return; }
+    setTesting(true); setStatus("");
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method:"POST",
+        headers:{ "Content-Type":"application/json", "x-api-key":key, "anthropic-version":"2023-06-01", "anthropic-dangerous-direct-browser-access":"true" },
+        body: JSON.stringify({ model:"claude-haiku-4-5-20251001", max_tokens:10, messages:[{role:"user",content:"Hi"}] })
+      });
+      const data = await res.json();
+      setStatus(data.content ? "ok" : "fail");
+    } catch { setStatus("fail"); }
+    setTesting(false);
+  };
+
+  const save = () => { if (key.startsWith("sk-ant")) { onSave(key); onClose(); } };
+
+  const inp = { fontSize:13, border:`1px solid ${C.navyBorder}`, borderRadius:8, padding:"10px 12px", width:"100%", background:C.navyMid, outline:"none", color:C.text, fontFamily:"monospace" };
+
+  return (
+    <div className="fade-in" style={{ position:"fixed",inset:0,background:"rgba(0,0,0,.8)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",padding:16 }} onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div style={{ background:C.navyCard,borderRadius:16,width:"100%",maxWidth:500,border:`1px solid ${C.navyBorder}` }}>
+        {/* Header */}
+        <div style={{ background:C.navy,padding:"16px 20px",borderRadius:"16px 16px 0 0",borderBottom:`1px solid ${C.navyBorder}`,display:"flex",justifyContent:"space-between",alignItems:"center" }}>
+          <div>
+            <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:800,fontSize:20,color:C.text }}>🤖 Enable AI Features</div>
+            <div style={{ fontSize:11,color:C.textFaint,marginTop:1 }}>Your key stays on your device only — never shared</div>
+          </div>
+          <button onClick={onClose} style={{ background:C.navyMid,border:"none",color:C.textDim,width:28,height:28,borderRadius:"50%",cursor:"pointer" }}>✕</button>
+        </div>
+
+        <div style={{ padding:20,display:"flex",flexDirection:"column",gap:16 }}>
+          {/* How to get a key */}
+          <div style={{ background:"rgba(62,137,255,.08)",borderRadius:10,padding:"13px 15px",border:`1px solid rgba(62,137,255,.2)` }}>
+            <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:13,color:"#60A5FA",marginBottom:8 }}>HOW TO GET YOUR FREE KEY</div>
+            {[
+              "1. Go to console.anthropic.com",
+              "2. Sign up for a free account",
+              "3. Click 'API Keys' in the left sidebar",
+              "4. Click 'Create Key' and copy it",
+              "5. Paste it below — free tier gives you $5 credit",
+            ].map((s,i)=>(
+              <div key={i} style={{ fontSize:12,color:C.textDim,lineHeight:1.7 }}>{s}</div>
+            ))}
+            <a href="https://console.anthropic.com" target="_blank" rel="noreferrer"
+              style={{ display:"inline-block",marginTop:8,background:C.blue,color:"#fff",borderRadius:7,padding:"6px 14px",fontSize:12,fontWeight:600,textDecoration:"none" }}>
+              Open console.anthropic.com →
+            </a>
+          </div>
+
+          {/* Key input */}
+          <div>
+            <label style={{ fontSize:11,fontWeight:600,color:C.textDim,display:"block",marginBottom:6 }}>Your Anthropic API Key</label>
+            <input style={inp} value={key} onChange={e=>setKey(e.target.value.trim())} placeholder="sk-ant-api03-..." type="password" />
+            <div style={{ fontSize:11,color:C.textFaint,marginTop:4 }}>
+              🔒 Stored only in your browser. Never sent to LetsBrag servers.
+            </div>
+          </div>
+
+          {/* Test result */}
+          {status==="ok" && (
+            <div style={{ background:"rgba(46,204,113,.12)",border:`1px solid rgba(46,204,113,.3)`,borderRadius:8,padding:"10px 13px",fontSize:13,color:C.green,display:"flex",alignItems:"center",gap:8 }}>
+              ✅ Key works! AI features are ready to use.
+            </div>
+          )}
+          {status==="fail" && (
+            <div style={{ background:"rgba(206,51,52,.12)",border:`1px solid rgba(206,51,52,.3)`,borderRadius:8,padding:"10px 13px",fontSize:13,color:C.redLight,display:"flex",alignItems:"center",gap:8 }}>
+              ❌ Key didn't work. Make sure you copied the full key starting with sk-ant-
+            </div>
+          )}
+
+          {/* Privacy note */}
+          <div style={{ background:"rgba(245,166,35,.08)",borderRadius:8,padding:"10px 13px",border:`1px solid rgba(245,166,35,.2)`,fontSize:11,color:C.gold,lineHeight:1.6 }}>
+            <strong>Privacy:</strong> Your API key and all AI conversations go directly between your device and Anthropic. LetsBrag never sees your key or your conversations. Each user pays only for their own usage — typically less than $0.01 per conversation.
+          </div>
+
+          {/* Buttons */}
+          <div style={{ display:"flex",gap:9,paddingTop:4,borderTop:`1px solid ${C.navyBorder}` }}>
+            <button onClick={test} disabled={testing||!key} style={{ flex:1,padding:"10px",background:C.navyMid,color:C.textDim,border:`1px solid ${C.navyBorder}`,borderRadius:8,fontWeight:600,fontSize:13,cursor:key?"pointer":"not-allowed",opacity:key?1:.5 }}>
+              {testing?<span style={{ display:"flex",alignItems:"center",justifyContent:"center",gap:6 }}><span className="spin" style={{ display:"inline-block",width:14,height:14,border:"2px solid rgba(255,255,255,.3)",borderTopColor:C.textDim,borderRadius:"50%" }} />Testing...</span>:"Test Key"}
+            </button>
+            <button onClick={save} disabled={!key.startsWith("sk-ant")} style={{ flex:2,padding:"10px",background:key.startsWith("sk-ant")?C.red:"rgba(206,51,52,.3)",color:"#fff",border:"none",borderRadius:8,fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:15,cursor:key.startsWith("sk-ant")?"pointer":"not-allowed" }}>
+              Save & Enable AI
+            </button>
+          </div>
+
+          {/* Remove key option */}
+          {localStorage.getItem("lb_apikey")&&(
+            <button onClick={()=>{ localStorage.removeItem("lb_apikey"); onSave(""); onClose(); }} style={{ background:"none",border:"none",color:C.textFaint,fontSize:11,cursor:"pointer",textAlign:"center",textDecoration:"underline" }}>
+              Remove saved key
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -1369,6 +1501,9 @@ export default function App() {
   const [coachLoading,  setCoachLoading]  = useState(false);
   const [habitNudge,    setHabitNudge]    = useState(false);
   const [darkMode,      setDarkMode]      = useLocalStorage("lb_dark",    true);
+  const [apiKey,        setApiKeyState]   = useLocalStorage("lb_apikey",   "");
+  const [showApiSetup,  setShowApiSetup]  = useState(false);
+  const saveApiKey = (key) => { setApiKeyState(key); try { localStorage.setItem("lb_apikey", key); } catch {} };
 
   // Init on mount
   useEffect(()=>{
@@ -2033,6 +2168,18 @@ export default function App() {
         </>}
 
 
+        {(activeTab==="coach"||activeTab==="transition"||activeTab==="package")&&!AI_ENABLED()&&(
+          <div className="fade-up" style={{ background:"rgba(124,99,255,.12)",border:`1px solid rgba(124,99,255,.3)`,borderRadius:10,padding:"12px 16px",marginBottom:16,display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap" }}>
+            <div style={{ display:"flex",alignItems:"center",gap:9 }}>
+              <span style={{ fontSize:18 }}>🤖</span>
+              <div>
+                <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:13,color:"#A78BFA" }}>AI Features Need a Free API Key</div>
+                <div style={{ fontSize:12,color:C.textDim }}>Takes 2 minutes to set up. Each user uses their own free Anthropic key.</div>
+              </div>
+            </div>
+            <button onClick={()=>setShowApiSetup(true)} style={{ background:"#A78BFA",color:"#000",border:"none",padding:"8px 16px",borderRadius:8,fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:13,cursor:"pointer",whiteSpace:"nowrap" }}>Set Up Free API Key →</button>
+          </div>
+        )}
         {activeTab==="coach"&&(
           <CoachChat
             messages={coachMessages} setMessages={setCoachMessages}
@@ -2070,7 +2217,7 @@ export default function App() {
           <FileGallery files={docFiles} setFiles={setDocFiles} categories={B.docCats||DOC_CATS} emptyIcon="📂" emptyMsg="Upload your career roadmap, rate manual, orders, and important career documents." />
         </>}
 
-        {activeTab==="profile"&&<ProfileScreen profile={profile} setProfile={setProfile} user={user} onLogout={handleLogout} appYear={appYear} setAppYear={setAppYear} B={B} onChangeBranch={()=>setBranch("")} />}
+        {activeTab==="profile"&&<ProfileScreen profile={profile} setProfile={setProfile} user={user} onLogout={handleLogout} appYear={appYear} setAppYear={setAppYear} B={B} onChangeBranch={()=>setBranch("")} apiEnabled={AI_ENABLED()} onOpenApiSetup={()=>setShowApiSetup(true)} />}
 
       </div>
 
@@ -2080,6 +2227,7 @@ export default function App() {
       {awardModal&&<AwardModal award={awardModal.award} isEdit={awardModal.isEdit} onSave={saveAward} onDelete={delAward} onClose={closeAwardModal} B={B} />}
       {keyDateModal&&<KeyDateModal kd={keyDateModal.kd} isEdit={keyDateModal.isEdit} onSave={saveDate} onDelete={delDate} onClose={closeDateModal} B={B} />}
       {bulletModal&&<BulletModal task={bulletModal.task} branch={branch} onClose={()=>setBulletModal(null)} onApply={b=>{ setBulletModal(null); }} />}
+      {showApiSetup&&<ApiKeyModal onClose={()=>setShowApiSetup(false)} onSave={saveApiKey} />}
     </div>
   );
 }
