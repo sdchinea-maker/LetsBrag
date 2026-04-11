@@ -5,6 +5,14 @@
 
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 
+// ============================================================
+//  © 2026 LetsBrag — All Rights Reserved
+//  Unauthorized copying, distribution, or sale of this
+//  application or its source code is strictly prohibited.
+//  Protected under U.S. Copyright Law (17 U.S.C. § 101).
+//  letsbrag.netlify.app
+// ============================================================
+
 // ─── AI CONFIGURATION ────────────────────────────────────────────────────────
 // Each user provides their own free Anthropic API key.
 // Keys are stored only in their own browser — never shared or sent anywhere else.
@@ -551,6 +559,61 @@ function ProfileScreen({ profile, setProfile, user, onLogout, appYear, setAppYea
 }
 
 
+
+
+// ─── TERMS OF SERVICE MODAL ───────────────────────────────────────────────────
+function TosModal({ onAccept }) {
+  const [scrolled, setScrolled] = useState(false);
+  const bodyRef = useRef();
+  const handleScroll = () => {
+    const el = bodyRef.current;
+    if (el && el.scrollTop + el.clientHeight >= el.scrollHeight - 20) setScrolled(true);
+  };
+  const TOS_SECTIONS = [
+    ["1. OWNERSHIP & COPYRIGHT", "LetsBrag and all associated content, design, code, features, and intellectual property are the exclusive property of LetsBrag and its creator. © 2026 LetsBrag. All rights reserved. Unauthorized copying, reproduction, distribution, modification, or sale of this application or any portion thereof is strictly prohibited and will be prosecuted to the full extent of the law under applicable federal copyright statutes (17 U.S.C. § 101 et seq.)."],
+    ["2. LICENSE TO USE", "LetsBrag grants you a personal, non-transferable, non-exclusive, revocable license to use this application for your individual military career tracking purposes only. You may not sublicense, sell, resell, transfer, assign, or commercially exploit this application or any content within it."],
+    ["3. PROHIBITED USES", "You agree NOT to copy, clone, or replicate this application for distribution or sale; reverse engineer or decompile the source code for commercial use; remove any copyright or proprietary notices; store classified or operationally restricted information; or represent this application as your own creation."],
+    ["4. OPSEC & INFORMATION SECURITY", "You are solely responsible for ensuring that any information you enter complies with your branch's security policies and applicable federal law. Do not enter classified, SCI, CUI, or operationally sensitive data. LetsBrag is not an official DoD product and is not connected to any military personnel systems."],
+    ["5. PRIVACY & DATA", "Your personal data, achievements, and uploaded files are stored locally on your device. LetsBrag does not collect, transmit, or sell your personal information. AI features use your own API key and communicate directly with Anthropic — LetsBrag does not intercept or store these communications."],
+    ["6. DISCLAIMER OF WARRANTIES", "LetsBrag is provided as-is without warranty of any kind. We do not guarantee the application will be error-free or uninterrupted. LetsBrag is not responsible for any career outcomes, promotion decisions, or evaluation results based on use of this application."],
+    ["7. INTELLECTUAL PROPERTY ENFORCEMENT", "Any unauthorized use, copying, or distribution of LetsBrag will result in immediate termination of your license and may result in civil and/or criminal liability. LetsBrag actively monitors for unauthorized copies and reserves all available legal remedies."],
+    ["8. GOVERNING LAW", "These Terms are governed by the laws of the United States of America. Any disputes shall be resolved in the appropriate federal court."],
+  ];
+  return (
+    <div className="fade-in" style={{ position:"fixed",inset:0,background:"rgba(0,0,0,.92)",zIndex:3000,display:"flex",alignItems:"center",justifyContent:"center",padding:16 }}>
+      <div style={{ background:C.navyCard,borderRadius:16,width:"100%",maxWidth:560,maxHeight:"92vh",display:"flex",flexDirection:"column",border:`1px solid ${C.navyBorder}`,boxShadow:"0 20px 60px rgba(0,0,0,.5)" }}>
+        <div style={{ background:C.navy,padding:"16px 20px",borderRadius:"16px 16px 0 0",borderBottom:`1px solid ${C.navyBorder}`,flexShrink:0,display:"flex",alignItems:"center",gap:12 }}>
+          <div style={{ width:38,height:38,borderRadius:9,background:`linear-gradient(135deg,${C.red},#8B0000)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18 }}>🎖️</div>
+          <div>
+            <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:800,fontSize:18,color:C.text }}>Terms of Service & Privacy Policy</div>
+            <div style={{ fontSize:11,color:C.textFaint,marginTop:1 }}>Read and accept before using LetsBrag</div>
+          </div>
+        </div>
+        <div ref={bodyRef} onScroll={handleScroll} style={{ flex:1,overflowY:"auto",padding:"18px 20px" }}>
+          {TOS_SECTIONS.map(([title, body], i) => (
+            <div key={i} style={{ marginBottom:16 }}>
+              <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:13,color:C.text,marginBottom:5,letterSpacing:.3 }}>{title}</div>
+              <div style={{ fontSize:12,color:C.textDim,lineHeight:1.75 }}>{body}</div>
+            </div>
+          ))}
+          <div style={{ background:"rgba(206,51,52,.08)",borderRadius:8,padding:"12px 14px",border:`1px solid rgba(206,51,52,.2)`,marginTop:4,marginBottom:16 }}>
+            <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:12,color:C.red,marginBottom:4 }}>NOT AN OFFICIAL DoD PRODUCT</div>
+            <div style={{ fontSize:11,color:C.textDim,lineHeight:1.65 }}>LetsBrag is an independent application. It is not affiliated with, endorsed by, or connected to the Department of Defense, any branch of the U.S. Armed Forces, or any government agency.</div>
+          </div>
+          <div style={{ textAlign:"center",fontSize:10,color:C.textFaint,paddingBottom:8 }}>© 2026 LetsBrag · All Rights Reserved · letsbrag.netlify.app</div>
+        </div>
+        <div style={{ padding:"14px 20px",borderTop:`1px solid ${C.navyBorder}`,flexShrink:0,background:C.navyMid,borderRadius:"0 0 16px 16px" }}>
+          {!scrolled&&<div style={{ fontSize:11,color:C.textFaint,textAlign:"center",marginBottom:8 }}>↓ Scroll to read the full terms before accepting</div>}
+          <button onClick={scrolled?onAccept:()=>bodyRef.current?.scrollBy({top:280,behavior:"smooth"})}
+            style={{ width:"100%",padding:"13px",background:scrolled?C.red:"rgba(206,51,52,.3)",color:"#fff",border:"none",borderRadius:10,fontFamily:"'Barlow Condensed',sans-serif",fontWeight:800,fontSize:16,cursor:scrolled?"pointer":"default",transition:"background .3s" }}>
+            {scrolled?"I Accept — Enter LetsBrag":"↓ Keep Scrolling to Accept"}
+          </button>
+          <div style={{ textAlign:"center",marginTop:7,fontSize:10,color:C.textFaint }}>By accepting you agree to the Terms of Service above · © 2026 LetsBrag</div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ─── OPSEC MODAL ─────────────────────────────────────────────────────────────
 function OpsecModal({ onAccept }) {
@@ -1447,6 +1510,11 @@ function LoginScreen({ onGoogleLogin, onDemo, loading }) {
         <button onClick={onDemo} style={{ width:"100%",padding:"12px 20px",background:"transparent",color:C.textDim,border:`1px solid ${C.navyBorder}`,borderRadius:10,fontWeight:600,fontSize:14,cursor:"pointer",marginBottom:24 }}>Try Demo (no login)</button>
 
         <div style={{ fontSize:11,color:C.textFaint,lineHeight:1.6 }}>🔒 Your data is private and encrypted.<br/>Works offline — log wins anywhere, anytime.<br/>All 6 branches supported.</div>
+        <div style={{ marginTop:18,paddingTop:14,borderTop:`1px solid ${C.navyBorder}`,fontSize:10,color:C.textFaint,lineHeight:1.7,textAlign:"center" }}>
+          © 2026 LetsBrag · All Rights Reserved<br/>
+          Unauthorized copying or distribution is prohibited.<br/>
+          Not an official DoD product.
+        </div>
       </div>
     </div>
   );
@@ -1485,6 +1553,7 @@ export default function App() {
   const [goals,         setGoals]         = useLocalStorage("lb_goals",    []);
   const [goalModal,     setGoalModal]     = useState(null);
   const [branch,        setBranch]        = useLocalStorage("lb_branch",   "");
+  const [tosAck,        setTosAck]        = useLocalStorage("lb_tos",      false);
   const [opsecAck,      setOpsecAck]      = useLocalStorage("lb_opsec",    false);
   const B = branch && BRANCHES[branch] ? BRANCHES[branch] : BRANCHES.Navy;
   const [activeTab,     setActiveTab]     = useState("overview");
@@ -1628,7 +1697,12 @@ export default function App() {
   const pieCount={P:tasks.filter(t=>t.pie==="P").length,I:tasks.filter(t=>t.pie==="I").length,E:tasks.filter(t=>t.pie==="E").length};
   const qData=QUARTERS.map(q=>({q:Q_SHORT[q]||q,total:tasks.filter(t=>t.quarter===q).length,done:tasks.filter(t=>t.quarter===q&&t.status==="Complete").length}));
 
-  // Show OPSEC acknowledgment first
+  // Show TOS first
+  if (!tosAck) return (
+    <div><style>{FONTS+CSS}</style><TosModal onAccept={()=>setTosAck(true)} /></div>
+  );
+
+  // Show OPSEC second
   if (!opsecAck) return (
     <div><style>{FONTS+CSS}</style>
       <OpsecModal onAccept={()=>setOpsecAck(true)} />
@@ -2221,6 +2295,25 @@ export default function App() {
 
       </div>
 
+
+      {/* ── FOOTER WATERMARK ── */}
+      <div style={{ textAlign:"center",padding:"20px 16px 80px",marginTop:4 }}>
+        <div style={{ display:"inline-flex",flexDirection:"column",alignItems:"center",gap:5 }}>
+          <div style={{ display:"flex",alignItems:"center",gap:8 }}>
+            <span style={{ fontSize:13 }}>🎖️</span>
+            <span style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:800,fontSize:14,color:C.textFaint,letterSpacing:.5 }}>LetsBrag</span>
+            <span style={{ fontSize:13 }}>🎖️</span>
+          </div>
+          <div style={{ fontSize:10,color:C.textFaint,lineHeight:1.7,textAlign:"center" }}>
+            © 2026 LetsBrag · All Rights Reserved<br/>
+            Unauthorized copying or distribution is prohibited
+          </div>
+          <div style={{ fontSize:10,color:C.textFaint }}>Navy · Army · Marines · Air Force · Space Force · Coast Guard</div>
+          <button onClick={()=>setTosAck(false)} style={{ background:"none",border:"none",color:C.textFaint,fontSize:10,cursor:"pointer",textDecoration:"underline",marginTop:2,padding:0 }}>
+            View Terms of Service
+          </button>
+        </div>
+      </div>
       {activeTab!=="profile"&&<QuickLog onSave={quickSave} />}
       {modal&&<AchModal task={modal.task} isEdit={modal.isEdit} onSave={saveTask} onDelete={delTask} onClose={closeModal} B={B} />}
       {goalModal&&<GoalModal goal={goalModal.goal} isEdit={goalModal.isEdit} onSave={saveGoal} onDelete={delGoal} onClose={closeGoalModal} />}
