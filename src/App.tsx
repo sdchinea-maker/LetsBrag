@@ -253,8 +253,21 @@ const dateStr = () => new Date().toISOString().slice(0,10);
 const clamp   = (v,lo,hi) => Math.min(hi,Math.max(lo,v));
 
 function useLocalStorage(key, init) {
-  const [val, setVal] = useState(()=>{ try{ const s=localStorage.getItem(key); return s?JSON.parse(s):init; }catch{ return init; } });
-  const set = useCallback(v=>{ setVal(v); try{ localStorage.setItem(key,JSON.stringify(v)); }catch{} },[key]);
+  const [val, setVal] = useState(()=>{
+    try { const s=localStorage.getItem(key); return s?JSON.parse(s):init; }
+    catch { return init; }
+  });
+  const set = useCallback(v=>{
+    setVal(v);
+    try {
+      localStorage.setItem(key, JSON.stringify(v));
+    } catch(e) {
+      // QuotaExceededError — storage full (often from large file uploads)
+      if (e.name==="QuotaExceededError"||e.code===22) {
+        console.warn("Storage full for key:", key, "— files may not persist after refresh.");
+      }
+    }
+  },[key]);
   return [val,set];
 }
 
@@ -319,12 +332,22 @@ function OfflineBanner() {
 
 // ─── FILE CARD ────────────────────────────────────────────────────────────────
 function FileCard({ file, onDelete, onEdit }) {
-  const isImg=file.dataUrl&&file.type?.startsWith("image/"), isPDF=file.type==="application/pdf";
+  const isImg = file.dataUrl && file.type?.startsWith("image/");
+  const isPDF = file.type === "application/pdf";
+  const hasData = !!(file.dataUrl);
   const iconBg=isPDF?"rgba(206,51,52,.2)":isImg?"rgba(62,137,255,.2)":"rgba(124,99,255,.2)";
   const iconCol=isPDF?C.redLight:isImg?"#60A5FA":"#A78BFA";
   return (
     <div className="card-hover fade-up" style={{ background:C.navyCard, borderRadius:12, overflow:"hidden", border:`1px solid ${C.navyBorder}` }}>
-      <div style={{ height:120, background:C.navyMid, overflow:"hidden", cursor:file.dataUrl?"pointer":"default", display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", gap:6 }} onClick={()=>file.dataUrl&&window.open(file.dataUrl,"_blank")}>
+      <div style={{ height:120, background:C.navyMid, overflow:"hidden", cursor:file.dataUrl?"pointer":"default", display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", gap:6 }} onClick={()=>{
+          if (file.dataUrl) {
+            try {
+              const a=document.createElement("a"); a.href=file.dataUrl; a.target="_blank"; a.rel="noopener noreferrer"; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+            } catch(e) { window.open(file.dataUrl,"_blank"); }
+          } else {
+            alert("File not available — may have been too large for browser storage. Please re-upload.");
+          }
+        }}>
         {isImg?<img src={file.dataUrl} alt={file.name} style={{ width:"100%",height:"100%",objectFit:"cover" }} />:<><div style={{ width:44,height:44,borderRadius:10,background:iconBg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20 }}>{isPDF?"📄":"📁"}</div><span style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:11,color:iconCol,letterSpacing:1 }}>{file.name?.split(".").pop().toUpperCase()}</span></>}
       </div>
       <div style={{ padding:"10px 12px" }}>
@@ -509,7 +532,11 @@ function QuickLog({ onSave }) {
 function ProfileScreen({ profile, setProfile, user, onLogout, appYear, setAppYear, B, onChangeBranch, apiEnabled, onOpenApiSetup }) {
   const [editing,setEditing]=useState(false), [form,setForm]=useState(profile);
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
-  const save=()=>{ setProfile(form); setEditing(false); };
+  const save=()=>{
+    setProfile(form);
+    try { localStorage.setItem("lb_profile", JSON.stringify(form)); } catch(e) {}
+    setEditing(false);
+  };
   const inp={ fontSize:13,border:`1px solid ${C.navyBorder}`,borderRadius:8,padding:"9px 11px",width:"100%",background:C.navyMid,outline:"none",color:C.text };
   const lbl={ fontSize:11,fontWeight:600,color:C.textDim,display:"block",marginBottom:4 };
   return (
@@ -1433,6 +1460,162 @@ function ApiKeyModal({ onClose, onSave }) {
   );
 }
 
+
+// ─── ONBOARDING WIZARD ───────────────────────────────────────────────────────
+function OnboardingWizard({ onComplete, B, setBranch }) {
+  const [step, setStep] = useState(0);
+  const [name, setName] = useState("");
+  const [paygrade, setPaygrade] = useState("E-5");
+  const [rate, setRate] = useState("");
+  const [unit, setUnit] = useState("");
+
+  const steps = [
+    {
+      icon:"👋",
+      title:"Welcome to LetsBrag",
+      subtitle:"Your military career tracker",
+      content: (
+        <div>
+          <div style={{ fontSize:13,color:C.textDim,lineHeight:1.8,marginBottom:20,textAlign:"center" }}>
+            LetsBrag helps you track achievements, goals, and awards all year long — so when eval season hits, you're ready.<br/><br/>
+            This quick setup takes <strong style={{ color:C.text }}>under 2 minutes.</strong>
+          </div>
+          <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:8 }}>
+            {[["✅","Log wins daily"],["⭐","Build your brag doc"],["🤖","Get AI career help"]].map(([icon,label])=>(
+              <div key={label} style={{ background:C.navyMid,borderRadius:10,padding:"12px 8px",textAlign:"center",border:`1px solid ${C.navyBorder}` }}>
+                <div style={{ fontSize:22,marginBottom:6 }}>{icon}</div>
+                <div style={{ fontSize:11,color:C.textDim,lineHeight:1.4 }}>{label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )
+    },
+    {
+      icon:"🪖",
+      title:"Select Your Branch",
+      subtitle:"The app adapts to your service's language",
+      content: (
+        <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:10 }}>
+          {Object.entries(BRANCHES).map(([key,b])=>(
+            <button key={key} onClick={()=>setBranch(key)}
+              style={{ background:B.name===b.name?"rgba(206,51,52,.15)":C.navyMid,border:`1.5px solid ${B.name===b.name?C.red:C.navyBorder}`,borderRadius:11,padding:"14px 10px",cursor:"pointer",textAlign:"center",transition:"all .15s" }}>
+              <div style={{ fontSize:26,marginBottom:5 }}>{b.emoji}</div>
+              <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:14,color:C.text }}>{b.name}</div>
+              <div style={{ fontSize:10,color:C.textDim,marginTop:2 }}>{b.evalDoc}</div>
+            </button>
+          ))}
+        </div>
+      )
+    },
+    {
+      icon:"👤",
+      title:"Your Profile",
+      subtitle:"Takes 30 seconds — helps personalize your experience",
+      content: (
+        <div style={{ display:"flex",flexDirection:"column",gap:12 }}>
+          {[
+            {label:"Your Name",val:name,set:setName,ph:"e.g. Jane Smith"},
+            {label:`Paygrade`,val:paygrade,set:null,ph:""},
+            {label:`${B.rankLabel||"Rate / MOS"}`,val:rate,set:setRate,ph:"e.g. IT, 11B, 0311..."},
+            {label:`${B.unitLabel||"Ship / Unit"}`,val:unit,set:setUnit,ph:"e.g. USS Nimitz, 1st Cavalry..."},
+          ].map(({label,val,set,ph})=>{
+            const inp = { fontSize:13,border:`1px solid ${C.navyBorder}`,borderRadius:8,padding:"9px 11px",width:"100%",background:C.navyMid,outline:"none",color:C.text,boxSizing:"border-box" };
+            if (label==="Paygrade") return (
+              <div key={label}>
+                <label style={{ fontSize:11,fontWeight:600,color:C.textDim,display:"block",marginBottom:4 }}>{label}</label>
+                <select style={{...inp,cursor:"pointer"}} value={paygrade} onChange={e=>setPaygrade(e.target.value)}>
+                  {(B.paygrades||PAYGRADES).map(p=><option key={p}>{p}</option>)}
+                </select>
+              </div>
+            );
+            return (
+              <div key={label}>
+                <label style={{ fontSize:11,fontWeight:600,color:C.textDim,display:"block",marginBottom:4 }}>{label} <span style={{ color:C.textFaint,fontWeight:400 }}>(optional)</span></label>
+                <input style={inp} value={val} onChange={e=>set(e.target.value)} placeholder={ph} />
+              </div>
+            );
+          })}
+        </div>
+      )
+    },
+    {
+      icon:"🎯",
+      title:"Start With the Essentials",
+      subtitle:"You can always explore more tabs later",
+      content: (
+        <div>
+          <div style={{ fontSize:13,color:C.textDim,lineHeight:1.75,marginBottom:16 }}>
+            LetsBrag has 14 tabs but you only need <strong style={{ color:C.text }}>3 to get started:</strong>
+          </div>
+          {[
+            ["✅","Achievements","Log your wins here — daily, weekly, whenever something happens. Takes 30 seconds."],
+            ["🎯","Goals","Set 2-3 career goals so you know what you're working toward."],
+            ["⭐","Brag Doc","Your formatted eval-ready document. Builds automatically as you log achievements."],
+          ].map(([icon,tab,desc])=>(
+            <div key={tab} style={{ display:"flex",gap:12,alignItems:"flex-start",marginBottom:14,background:C.navyMid,borderRadius:10,padding:"12px 14px",border:`1px solid ${C.navyBorder}` }}>
+              <span style={{ fontSize:22,flexShrink:0 }}>{icon}</span>
+              <div>
+                <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:14,color:C.text,marginBottom:2 }}>{tab}</div>
+                <div style={{ fontSize:12,color:C.textDim,lineHeight:1.5 }}>{desc}</div>
+              </div>
+            </div>
+          ))}
+          <div style={{ background:"rgba(46,204,113,.1)",borderRadius:9,padding:"10px 13px",border:`1px solid rgba(46,204,113,.2)`,fontSize:12,color:C.green,lineHeight:1.6 }}>
+            💡 <strong>Pro tip:</strong> Use the 🎙️ mic button or the red + button to log wins in 10 seconds right after they happen.
+          </div>
+        </div>
+      )
+    },
+  ];
+
+  const current = steps[step];
+  const isLast = step === steps.length - 1;
+  const canNext = step !== 1 || B.name; // branch step requires selection
+
+  const handleNext = () => {
+    if (isLast) {
+      onComplete({ name, paygrade, rate, ship: unit, command:"", prd:"", bio:"" });
+    } else {
+      setStep(s => s + 1);
+    }
+  };
+
+  return (
+    <div className="fade-in" style={{ position:"fixed",inset:0,background:"rgba(0,0,0,.85)",zIndex:1500,display:"flex",alignItems:"center",justifyContent:"center",padding:16 }}>
+      <div style={{ background:C.navyCard,borderRadius:16,width:"100%",maxWidth:500,border:`1px solid ${C.navyBorder}`,boxShadow:"0 20px 60px rgba(0,0,0,.5)" }}>
+        {/* Progress dots */}
+        <div style={{ display:"flex",justifyContent:"center",gap:8,padding:"16px 20px 0" }}>
+          {steps.map((_,i)=>(
+            <div key={i} style={{ width:i===step?24:8,height:8,borderRadius:99,background:i===step?C.red:i<step?"rgba(206,51,52,.4)":C.navyBorder,transition:"all .3s" }} />
+          ))}
+        </div>
+        {/* Header */}
+        <div style={{ padding:"16px 20px 0",textAlign:"center" }}>
+          <div style={{ fontSize:36,marginBottom:8 }}>{current.icon}</div>
+          <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:800,fontSize:22,color:C.text,marginBottom:4 }}>{current.title}</div>
+          <div style={{ fontSize:12,color:C.textDim,marginBottom:16 }}>{current.subtitle}</div>
+        </div>
+        {/* Content */}
+        <div style={{ padding:"0 20px 16px" }}>{current.content}</div>
+        {/* Navigation */}
+        <div style={{ padding:"14px 20px",borderTop:`1px solid ${C.navyBorder}`,display:"flex",gap:10 }}>
+          {step > 0 && (
+            <button onClick={()=>setStep(s=>s-1)} style={{ padding:"10px 16px",background:C.navyMid,color:C.textDim,border:"none",borderRadius:8,fontWeight:600,fontSize:13,cursor:"pointer" }}>← Back</button>
+          )}
+          <button onClick={handleNext} disabled={!canNext}
+            style={{ flex:1,padding:"12px",background:canNext?C.red:"rgba(206,51,52,.3)",color:"#fff",border:"none",borderRadius:8,fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:16,cursor:canNext?"pointer":"not-allowed",transition:"background .2s" }}>
+            {isLast ? "Let's Brag! 🚀" : "Next →"}
+          </button>
+        </div>
+        <div style={{ textAlign:"center",padding:"0 20px 14px",fontSize:10,color:C.textFaint }}>
+          Step {step+1} of {steps.length} · You can always access all features later
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── GOAL MODAL ───────────────────────────────────────────────────────────────
 function GoalModal({ goal, onSave, onDelete, onClose, isEdit }) {
   const [form, setForm] = useState(goal);
@@ -1537,6 +1720,7 @@ const TABS=[
   {id:"iloveme",     icon:"🎖️",  label:"I Love Me"},
   {id:"docs",        icon:"📂", label:"Career Docs"},
   {id:"profile",     icon:"👤", label:"Profile"},
+  {id:"help",        icon:"❓", label:"Help"},
 ];
 
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
@@ -1554,6 +1738,8 @@ export default function App() {
   const [goalModal,     setGoalModal]     = useState(null);
   const [branch,        setBranch]        = useLocalStorage("lb_branch",   "");
   const [tosAck,        setTosAck]        = useLocalStorage("lb_tos",      false);
+  const [onboarded,     setOnboarded]     = useLocalStorage("lb_onboarded", false);
+  const [allTabs,       setAllTabs]       = useLocalStorage("lb_alltabs",   false);
   const [opsecAck,      setOpsecAck]      = useLocalStorage("lb_opsec",    false);
   const B = branch && BRANCHES[branch] ? BRANCHES[branch] : BRANCHES.Navy;
   const [activeTab,     setActiveTab]     = useState("overview");
@@ -1716,6 +1902,18 @@ export default function App() {
     </div>
   );
 
+  // Show onboarding wizard for first-time users (after branch set)
+  if (branch && !onboarded) return (
+    <div><style>{FONTS+CSS}</style>
+      <OnboardingWizard
+        B={B} setBranch={setBranch}
+        onComplete={(profileData)=>{
+          if (profileData.name||profileData.rate||profileData.ship) setProfile(p=>({...p,...profileData}));
+          setOnboarded(true);
+        }} />
+    </div>
+  );
+
   // Show branch selection if not set
   if (!branch) return (
     <div><style>{FONTS+CSS}</style>
@@ -1762,11 +1960,17 @@ export default function App() {
           </div>
         </div>
         <div style={{ display:"flex",overflowX:"auto",padding:"8px 10px 0",gap:2,scrollbarWidth:"none" }}>
-          {TABS.map(({id,icon,label})=>(
+          {(allTabs ? TABS : TABS.slice(0,5)).map(({id,icon,label})=>(
             <button key={id} onClick={()=>setActiveTab(id)} style={{ padding:"8px 12px",borderRadius:"7px 7px 0 0",border:"none",cursor:"pointer",fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:13,background:activeTab===id?C.navy:"transparent",color:activeTab===id?C.text:"rgba(122,143,168,.7)",whiteSpace:"nowrap",flexShrink:0,transition:"all .15s",display:"flex",alignItems:"center",gap:5,borderBottom:activeTab===id?`2px solid ${C.red}`:"2px solid transparent" }}>
               <span>{icon}</span><span className="tab-text">{label}</span>
             </button>
           ))}
+          {!allTabs&&(
+            <button onClick={()=>setAllTabs(true)}
+              style={{ padding:"8px 10px",borderRadius:"7px 7px 0 0",border:"none",cursor:"pointer",fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:12,background:"transparent",color:"rgba(122,143,168,.7)",whiteSpace:"nowrap",flexShrink:0 }}>
+              ••• More
+            </button>
+          )}
         </div>
       </div>
 
@@ -2290,6 +2494,85 @@ export default function App() {
           </div>
           <FileGallery files={docFiles} setFiles={setDocFiles} categories={B.docCats||DOC_CATS} emptyIcon="📂" emptyMsg="Upload your career roadmap, rate manual, orders, and important career documents." />
         </>}
+
+
+        {activeTab==="help"&&(
+          <div className="fade-up">
+            <div style={{ background:C.navyCard,borderRadius:12,padding:"14px 16px",marginBottom:20,border:`1px solid ${C.navyBorder}` }}>
+              <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:800,fontSize:20,color:C.text,marginBottom:2 }}>❓ Help & Reference</div>
+              <div style={{ fontSize:12,color:C.textDim }}>Everything you need to know about using LetsBrag effectively.</div>
+            </div>
+
+            {[
+              {
+                section:"🚀 Getting Started",
+                items:[
+                  ["How do I log my first achievement?","Tap the ✅ Achievements tab → tap '+ Log Achievement' or use the red + button floating at the bottom right of any screen. You can type or tap the 🎙️ mic to speak your achievement."],
+                  ["What is PIE?","PIE stands for Performance, Self-Improvement, and Exposure. P = your job duties and mission impact. I = education, certs, and personal growth. E = awards, boards, volunteering, and visibility. Aim for ~60% P, ~25% I, ~15% E."],
+                  ["How do I add the app to my home screen?","iPhone: Open in Safari → tap Share ↑ → 'Add to Home Screen'. Android: Open in Chrome → tap ⋮ → 'Add to Home Screen'. It will appear like a real app icon."],
+                  ["Does the app work offline?","Yes. Log achievements, goals, and dates with no internet. Your data saves to your device automatically."],
+                ]
+              },
+              {
+                section:"✅ Achievements",
+                items:[
+                  ["What should I log?","Anything that demonstrates your value — training you led, qualifications earned, problems you solved, collateral duties, community service, PT scores, boards you sat on, courses completed."],
+                  ["What makes a strong impact statement?","Use numbers. 'Increased DC qual rate from 54% to 91% across 47 personnel in 8 weeks' is far stronger than 'improved DC training.' Always ask: how many? how fast? what % improvement? how much $$ saved?"],
+                  ["What is Visibility?","How high up the chain of command knows about this achievement. Higher visibility = stronger eval impact."],
+                  ["Can I use voice to log?","Yes — tap the 🎙️ mic button on any text field and speak. Works on Chrome (Android) and Safari (iOS)."],
+                ]
+              },
+              {
+                section:"⭐ Brag Doc",
+                items:[
+                  ["How do I share my Brag Doc?","Go to the ⭐ Brag Doc tab → tap 'Copy Full Brag Doc' → open an email or Word doc → paste. Your achievements are organized by PIE category."],
+                  ["Why are some cards flagged with ⚠?","Those completed achievements are missing an impact statement with numbers. Tap the card to add quantifiable results — your supervisor needs these to write strong eval bullets."],
+                  ["When should I share my Brag Doc?","Share it with your supervisor 2-4 weeks before your eval is due. Don't wait until they ask."],
+                ]
+              },
+              {
+                section:"🤖 AI Features",
+                items:[
+                  ["Why isn't the AI working?","AI features require a free Anthropic API key. Go to Profile tab → tap '🤖 Enable AI' → follow the setup steps. Takes 2 minutes and the free tier gives you $5 in credits."],
+                  ["Is my data safe with the AI?","Yes. Your conversations go directly from your device to Anthropic using your own key. LetsBrag never sees your AI conversations or API key."],
+                  ["What can I ask the AI Coach?","Anything about your career — 'What should I focus on for promotion?', 'Review my PIE balance', 'Help me prepare for a board', 'What does my eval score mean?'"],
+                  ["Does AI work offline?","No. AI features require an internet connection. You can still log everything offline — generate AI bullets when back online."],
+                ]
+              },
+              {
+                section:"💾 Data & Privacy",
+                items:[
+                  ["Where is my data stored?","On your device only, in your browser's localStorage. Nothing is sent to LetsBrag servers."],
+                  ["Why did my data disappear after refreshing?","This can happen if your browser cleared storage (private/incognito mode, browser settings, or storage full from large file uploads). Avoid using private/incognito mode for best results."],
+                  ["Why can't I open an uploaded file?","Large files (over 2MB) may exceed browser storage limits and not persist after refreshing. Try re-uploading the file or use a compressed version."],
+                  ["How do I change my branch?","Go to Profile tab → tap 'Change Branch' button."],
+                ]
+              },
+              {
+                section:"⚠️ OPSEC Reminders",
+                items:[
+                  ["What should I NEVER put in LetsBrag?","Classified information, specific unit locations, deployment destinations, operation names or dates, troop numbers, equipment quantities, or future mission plans."],
+                  ["Is LetsBrag an official DoD app?","No. LetsBrag is an independent tool built to help service members. It is not affiliated with, endorsed by, or connected to the DoD or any military branch."],
+                ]
+              },
+            ].map(({section, items})=>(
+              <div key={section} style={{ background:C.navyCard,borderRadius:12,padding:"16px 18px",marginBottom:14,border:`1px solid ${C.navyBorder}` }}>
+                <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:15,color:C.text,marginBottom:12 }}>{section}</div>
+                {items.map(([q,a],i)=>(
+                  <div key={i} style={{ marginBottom:i<items.length-1?14:0,paddingBottom:i<items.length-1?14:0,borderBottom:i<items.length-1?`1px solid ${C.navyBorder}`:"none" }}>
+                    <div style={{ fontWeight:600,fontSize:13,color:C.text,marginBottom:4 }}>{q}</div>
+                    <div style={{ fontSize:12,color:C.textDim,lineHeight:1.7 }}>{a}</div>
+                  </div>
+                ))}
+              </div>
+            ))}
+
+            <div style={{ background:"rgba(62,137,255,.08)",borderRadius:12,padding:"14px 16px",border:`1px solid rgba(62,137,255,.2)`,textAlign:"center" }}>
+              <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:14,color:"#60A5FA",marginBottom:4 }}>Still need help?</div>
+              <div style={{ fontSize:12,color:C.textDim,lineHeight:1.6 }}>Visit <strong style={{ color:C.text }}>letsbrag.netlify.app</strong> on a desktop for the full experience.<br/>Your feedback makes LetsBrag better for every service member.</div>
+            </div>
+          </div>
+        )}
 
         {activeTab==="profile"&&<ProfileScreen profile={profile} setProfile={setProfile} user={user} onLogout={handleLogout} appYear={appYear} setAppYear={setAppYear} B={B} onChangeBranch={()=>setBranch("")} apiEnabled={AI_ENABLED()} onOpenApiSetup={()=>setShowApiSetup(true)} />}
 
