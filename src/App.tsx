@@ -120,7 +120,7 @@ const TIERS = {
 
 // During beta/test phase — set this to "promax" to give everyone full access
 const BETA_TIER = "promax";
-const BETA_MODE = true; // Set to false when Stripe is wired in
+const BETA_MODE = false; // Stripe is live — subscription required after trial
 
 const getUserTier = () => {
   if (BETA_MODE) return BETA_TIER;
@@ -2332,6 +2332,82 @@ function GoalModal({ goal, onSave, onDelete, onClose, isEdit }) {
   );
 }
 
+
+// ─── PAYWALL MODAL ────────────────────────────────────────────────────────────
+function PaywallModal({ onSubscribe, onLogout, checkingOut, subBilling, setSubBilling }) {
+  return (
+    <div className="fade-in" style={{ position:"fixed",inset:0,background:"rgba(0,0,0,.92)",zIndex:3000,display:"flex",alignItems:"center",justifyContent:"center",padding:16 }}>
+      <div style={{ background:C.navyCard,borderRadius:20,width:"100%",maxWidth:420,border:`1px solid ${C.navyBorder}`,overflow:"hidden",boxShadow:"0 24px 64px rgba(0,0,0,.6)" }}>
+
+        {/* Header */}
+        <div style={{ background:`linear-gradient(135deg,${C.red},#8B0000)`,padding:"28px 24px",textAlign:"center" }}>
+          <div style={{ fontSize:48,marginBottom:8 }}>🎖️</div>
+          <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:800,fontSize:26,color:"#fff",marginBottom:4 }}>Start Your Free Trial</div>
+          <div style={{ fontSize:13,color:"rgba(255,255,255,.8)",lineHeight:1.5 }}>7 days free — then just $4.99/month.<br/>Cancel anytime. No commitment.</div>
+        </div>
+
+        <div style={{ padding:"20px 24px" }}>
+          {/* What you get */}
+          <div style={{ marginBottom:18 }}>
+            {[
+              ["✅","Achievement Log","Log wins with voice dictation — takes 10 seconds"],
+              ["🎯","Goals Tracker","Track career goals with deadlines and priorities"],
+              ["⭐","Brag Doc Builder","Auto-organized by PIE, copy and give to your supervisor"],
+              ["🏆","Awards Tracker","Track every award from nomination to presentation"],
+              ["⏰","Key Dates","Never miss a PRD, eval deadline, or PFA window"],
+            ].map(([icon,title,desc])=>(
+              <div key={title} style={{ display:"flex",gap:10,alignItems:"flex-start",marginBottom:10 }}>
+                <span style={{ fontSize:16,flexShrink:0,marginTop:1 }}>{icon}</span>
+                <div>
+                  <div style={{ fontSize:12,fontWeight:600,color:C.text }}>{title}</div>
+                  <div style={{ fontSize:11,color:C.textDim,lineHeight:1.4 }}>{desc}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Billing toggle */}
+          <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14 }}>
+            {[
+              {billing:"monthly",label:"Monthly",price:"$4.99",sub:"/month"},
+              {billing:"annual", label:"Annual", price:"$39.99",sub:"/year · save 33%",best:true},
+            ].map(({billing,label,price,sub,best})=>(
+              <div key={billing} onClick={()=>setSubBilling(billing)}
+                style={{ background:subBilling===billing?"rgba(220,38,38,.12)":C.navyMid,borderRadius:10,padding:"12px",border:`1.5px solid ${subBilling===billing?C.red:C.navyBorder}`,cursor:"pointer",position:"relative",textAlign:"center" }}>
+                {best&&<div style={{ position:"absolute",top:-9,left:"50%",transform:"translateX(-50%)",background:C.red,color:"#fff",borderRadius:99,padding:"1px 10px",fontSize:9,fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,whiteSpace:"nowrap" }}>BEST VALUE</div>}
+                <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:13,color:C.text,marginBottom:2 }}>{label}</div>
+                <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:800,fontSize:22,color:subBilling===billing?C.red:C.text }}>{price}</div>
+                <div style={{ fontSize:10,color:C.textDim }}>{sub}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* CTA button */}
+          <button onClick={()=>onSubscribe(subBilling)} disabled={checkingOut}
+            style={{ width:"100%",padding:"14px",background:checkingOut?"rgba(220,38,38,.4)":C.red,color:"#fff",border:"none",borderRadius:10,fontFamily:"'Barlow Condensed',sans-serif",fontWeight:800,fontSize:18,cursor:checkingOut?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:10,marginBottom:10 }}>
+            {checkingOut
+              ? <><span className="spin" style={{ display:"inline-block",width:18,height:18,border:"2px solid rgba(255,255,255,.4)",borderTopColor:"#fff",borderRadius:"50%" }} /> Opening Checkout...</>
+              : <>🔒 Start 7-Day Free Trial →</>}
+          </button>
+
+          <div style={{ textAlign:"center",fontSize:10,color:C.textFaint,lineHeight:1.7,marginBottom:14 }}>
+            You won't be charged until your trial ends.<br/>
+            Secure checkout powered by Stripe. Cancel anytime.
+          </div>
+
+          <button onClick={onLogout} style={{ width:"100%",padding:"9px",background:"none",color:C.textFaint,border:`1px solid ${C.navyBorder}`,borderRadius:8,fontSize:12,cursor:"pointer" }}>
+            Sign out
+          </button>
+        </div>
+
+        <div style={{ padding:"12px 24px",borderTop:`1px solid ${C.navyBorder}`,textAlign:"center",fontSize:10,color:C.textFaint }}>
+          © 2026 LetsBrag™ · Not an official DoD product · letsbrag.netlify.app
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── LOGIN SCREEN ─────────────────────────────────────────────────────────────
 function LoginScreen({ onGoogleLogin, onDemo, loading }) {
   return (
@@ -2391,6 +2467,7 @@ export default function App() {
   const [firebaseReady, setFirebaseReady] = useState(false);
   const [syncing,       setSyncing]       = useState(false);
   const [lastSynced,    setLastSynced]    = useState(null);
+  const [showPaywall,   setShowPaywall]   = useState(false);
   const [user,          setUser]          = useState(null);
   const [authLoading,   setAuthLoading]   = useState(false);
   const [loggedIn,      setLoggedIn]      = useLocalStorage("lb_loggedIn", false);
@@ -2488,8 +2565,9 @@ export default function App() {
       if (u) {
         setUser(u);
         setLoggedIn(true);
-        // Restore cloud data on page reload
         syncFromCloud(u);
+        // Show paywall if not subscribed
+        if (!subscribed) setShowPaywall(true);
       }
     }).then(unsub => {
       if (unsub) unsubscribe = unsub;
@@ -2498,6 +2576,7 @@ export default function App() {
     const params = new URLSearchParams(window.location.search);
     if (params.get("subscribed") === "true") {
       setSubscribed(true);
+      setShowPaywall(false);
       window.history.replaceState({}, "", APP_URL);
     }
     if (params.get("checkout") === "cancelled") {
@@ -2537,7 +2616,6 @@ export default function App() {
     try {
       const cloudData = await loadUserData(u.uid);
       if (cloudData) {
-        // Cloud data wins — restore everything saved to Firestore
         if (cloudData.profile)      { setProfile(cloudData.profile);     localStorage.setItem("lb_profile",  JSON.stringify(cloudData.profile)); }
         if (cloudData.tasks)        { setTasks(cloudData.tasks);          localStorage.setItem("lb_tasks",    JSON.stringify(cloudData.tasks)); }
         if (cloudData.goals)        { setGoals(cloudData.goals);          localStorage.setItem("lb_goals",    JSON.stringify(cloudData.goals)); }
@@ -2546,9 +2624,19 @@ export default function App() {
         if (cloudData.branch)       { setBranch(cloudData.branch);        localStorage.setItem("lb_branch",   JSON.stringify(cloudData.branch)); }
         if (cloudData.darkMode !== undefined) { setDarkMode(cloudData.darkMode); }
         if (cloudData.subscribed)   { setSubscribed(cloudData.subscribed); }
+        // Record trial start date if first login
+        if (!cloudData.trialStarted) {
+          await saveUserData(u.uid, { trialStarted: new Date().toISOString() });
+        }
         setLastSynced(new Date());
       } else {
-        // First time logging in from this device — push local data to cloud
+        // First login ever — record trial start
+        const firstLoginData = {
+          trialStarted: new Date().toISOString(),
+          email: u.email,
+          displayName: u.displayName,
+        };
+        await saveUserData(u.uid, firstLoginData);
         await pushToCloud(u.uid);
       }
     } catch(e) {
@@ -2587,6 +2675,8 @@ export default function App() {
       setLoggedIn(true);
       // Sync cloud data — restores their profile across devices
       await syncFromCloud(u);
+      // Show paywall if not subscribed
+      if (!subscribed) setShowPaywall(true);
       // Pre-fill profile name if still empty after sync
       if (u.displayName && !profile.name) {
         const updated = {...profile, name: u.displayName};
@@ -3735,6 +3825,7 @@ export default function App() {
       {awardModal&&<AwardModal award={awardModal.award} isEdit={awardModal.isEdit} onSave={saveAward} onDelete={delAward} onClose={closeAwardModal} B={B} />}
       {keyDateModal&&<KeyDateModal kd={keyDateModal.kd} isEdit={keyDateModal.isEdit} onSave={saveDate} onDelete={delDate} onClose={closeDateModal} B={B} />}
       {/* AI modals — enabled in v2 */}
+      {showPaywall&&!subscribed&&loggedIn&&<PaywallModal onSubscribe={handleCheckout} onLogout={handleLogout} checkingOut={checkingOut} subBilling={subBilling} setSubBilling={setSubBilling} />}
     </div>
   );
 }
