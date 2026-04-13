@@ -180,10 +180,9 @@ async function goToCheckout(priceId) {
 }
 
 // ─── FIREBASE AUTHENTICATION ─────────────────────────────────────────────────
-// Real Google login via Firebase Auth — loaded dynamically to keep bundle small
-// Firebase config for letsbrag project
+// Firebase loaded via script tags in index.html for maximum compatibility
 const FB_CONFIG = {
-  apiKey:            import.meta.env.VITE_FIREBASE_API_KEY || "",
+  apiKey:            import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain:        "letsbrag.firebaseapp.com",
   projectId:         "letsbrag",
   storageBucket:     "letsbrag.firebasestorage.app",
@@ -191,37 +190,49 @@ const FB_CONFIG = {
   appId:             "1:196979143235:web:91521873aa86e4958b5af6"
 };
 
-// Load Firebase dynamically — only when needed, keeps bundle fast
 let _auth = null;
 let _db   = null;
 let _provider = null;
 let _fbLoaded = false;
 
+function loadFirebaseScripts() {
+  return new Promise((resolve) => {
+    if (window.firebase && window.firebase.auth) { resolve(); return; }
+    const scripts = [
+      "https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js",
+      "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js",
+      "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js",
+    ];
+    let loaded = 0;
+    scripts.forEach(src => {
+      const s = document.createElement("script");
+      s.src = src;
+      s.onload = () => { loaded++; if (loaded === scripts.length) resolve(); };
+      s.onerror = () => { loaded++; if (loaded === scripts.length) resolve(); };
+      document.head.appendChild(s);
+    });
+  });
+}
+
 async function loadFirebase() {
-  if (_fbLoaded) return { auth: _auth, db: _db, provider: _provider };
+  if (_fbLoaded) return { auth: _auth, db: _db };
   try {
-    const [
-      { initializeApp, getApps },
-      { getAuth, GoogleAuthProvider },
-      { getFirestore }
-    ] = await Promise.all([
-      import("https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js"),
-      import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js"),
-      import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js"),
-    ]);
-    const app = getApps().length ? getApps()[0] : initializeApp(FB_CONFIG);
-    _auth     = getAuth(app);
-    _db       = getFirestore(app);
-    _provider = new GoogleAuthProvider();
+    await loadFirebaseScripts();
+    if (!window.firebase) throw new Error("Firebase scripts failed to load");
+    if (!window.firebase.apps.length) {
+      window.firebase.initializeApp(FB_CONFIG);
+    }
+    _auth     = window.firebase.auth();
+    _db       = window.firebase.firestore();
+    _provider = new window.firebase.auth.GoogleAuthProvider();
     _provider.setCustomParameters({ prompt: "select_account" });
     _provider.addScope("email");
     _provider.addScope("profile");
     _fbLoaded = true;
-    console.log("Firebase loaded OK");
-    return { auth: _auth, db: _db, provider: _provider };
+    console.log("Firebase loaded OK ✅");
+    return { auth: _auth, db: _db };
   } catch(e) {
     console.error("Firebase load error:", e);
-    alert("Failed to load Firebase: " + e.message + ". Check your internet connection.");
     return null;
   }
 }
@@ -232,15 +243,13 @@ async function saveUserData(uid, data) {
   try {
     const fb = await loadFirebase();
     if (!fb?.db) return;
-    const { doc, setDoc, serverTimestamp } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
-    await setDoc(doc(fb.db, "users", uid), {
+    await fb.db.collection("users").doc(uid).set({
       ...data,
-      updatedAt: serverTimestamp(),
+      updatedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
       uid,
     }, { merge: true });
   } catch(e) {
     console.warn("Firestore save error:", e.message);
-    // Silent fail — data is still in localStorage
   }
 }
 
@@ -249,9 +258,8 @@ async function loadUserData(uid) {
   try {
     const fb = await loadFirebase();
     if (!fb?.db) return null;
-    const { doc, getDoc } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
-    const snap = await getDoc(doc(fb.db, "users", uid));
-    return snap.exists() ? snap.data() : null;
+    const snap = await fb.db.collection("users").doc(uid).get();
+    return snap.exists ? snap.data() : null;
   } catch(e) {
     console.warn("Firestore load error:", e.message);
     return null;
@@ -260,16 +268,13 @@ async function loadUserData(uid) {
 
 async function signInWithGoogle() {
   const fb = await loadFirebase();
-  if (!fb) throw new Error("Firebase unavailable");
-  const { signInWithPopup, signInWithRedirect, getRedirectResult } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
-  // Try popup first — if it fails use redirect (works on all mobile browsers)
+  if (!fb) throw new Error("Firebase failed to load.");
   try {
-    return await signInWithPopup(fb.auth, fb.provider);
+    return await fb.auth.signInWithPopup(_provider);
   } catch(e) {
     if (e.code === "auth/popup-blocked" || e.code === "auth/popup-closed-by-user" || e.code === "auth/cancelled-popup-request") {
-      // Fall back to redirect — works on all mobile browsers
-      await signInWithRedirect(fb.auth, fb.provider);
-      return null; // Page will redirect and come back
+      await fb.auth.signInWithRedirect(_provider);
+      return null;
     }
     throw e;
   }
@@ -279,9 +284,7 @@ async function checkRedirectResult() {
   try {
     const fb = await loadFirebase();
     if (!fb) return null;
-    const { getRedirectResult } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
-    const result = await getRedirectResult(fb.auth);
-    return result;
+    return await fb.auth.getRedirectResult();
   } catch(e) {
     console.warn("Redirect result error:", e);
     return null;
@@ -291,15 +294,13 @@ async function checkRedirectResult() {
 async function signOutUser() {
   const fb = await loadFirebase();
   if (!fb) return;
-  const { signOut } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
-  return signOut(fb.auth);
+  return fb.auth.signOut();
 }
 
 async function onAuthReady(callback) {
   const fb = await loadFirebase();
   if (!fb) { callback(null); return ()=>{}; }
-  const { onAuthStateChanged } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
-  return onAuthStateChanged(fb.auth, callback);
+  return fb.auth.onAuthStateChanged(callback);
 }
 
 // ─── STYLES / TOKENS ─────────────────────────────────────────────────────────
@@ -2472,8 +2473,7 @@ export default function App() {
     loadFirebase().then(async (fb) => {
       if (!fb) return;
       try {
-        const { getRedirectResult } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
-        const result = await getRedirectResult(fb.auth);
+        const result = await fb.auth.getRedirectResult();
         if (result?.user) {
           setUser(result.user);
           setLoggedIn(true);
