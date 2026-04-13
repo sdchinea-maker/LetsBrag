@@ -213,12 +213,15 @@ async function loadFirebase() {
     _auth     = getAuth(app);
     _db       = getFirestore(app);
     _provider = new GoogleAuthProvider();
+    _provider.setCustomParameters({ prompt: "select_account" });
     _provider.addScope("email");
     _provider.addScope("profile");
     _fbLoaded = true;
+    console.log("Firebase loaded OK");
     return { auth: _auth, db: _db, provider: _provider };
   } catch(e) {
     console.error("Firebase load error:", e);
+    alert("Failed to load Firebase: " + e.message + ". Check your internet connection.");
     return null;
   }
 }
@@ -2465,6 +2468,22 @@ export default function App() {
       }
     });
 
+    // Handle redirect result for mobile browsers
+    loadFirebase().then(async (fb) => {
+      if (!fb) return;
+      try {
+        const { getRedirectResult } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
+        const result = await getRedirectResult(fb.auth);
+        if (result?.user) {
+          setUser(result.user);
+          setLoggedIn(true);
+          syncFromCloud(result.user);
+        }
+      } catch(e) {
+        console.warn("Redirect result error:", e);
+      }
+    });
+
     onAuthReady((u) => {
       if (u) {
         setUser(u);
@@ -2575,15 +2594,21 @@ export default function App() {
         try { localStorage.setItem("lb_profile", JSON.stringify(updated)); } catch {}
       }
     } catch(e) {
+      console.error("Auth error full:", e);
       if (e.code === "auth/popup-closed-by-user") {
-        // User closed popup — no error needed
+        // silent
       } else if (e.code === "auth/popup-blocked") {
-        alert("Popup was blocked by your browser. Please allow popups for letsbrag.netlify.app and try again.");
+        alert("Popup blocked. Please allow popups for this site and try again.");
       } else if (e.code === "auth/network-request-failed") {
-        alert("Network error. Please check your connection and try again.");
+        alert("Network error. Check your connection and try again.");
+      } else if (e.code === "auth/unauthorized-domain") {
+        alert("Domain not authorized. Make sure letsbrag.netlify.app is in your Firebase authorized domains list.");
+      } else if (e.code === "auth/cancelled-popup-request") {
+        // silent — another popup opened
+      } else if (e.code === "auth/internal-error") {
+        alert("Firebase internal error. Check that Google Auth is enabled in your Firebase console and the support email is saved.");
       } else {
-        console.error("Auth error:", e);
-        alert("Sign in failed. Please try again.");
+        alert("Sign in failed: " + (e.code || e.message || "Unknown error") + "\n\nPlease screenshot this and share it.");
       }
     }
     setAuthLoading(false);
