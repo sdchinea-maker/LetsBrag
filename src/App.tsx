@@ -183,7 +183,7 @@ async function goToCheckout(priceId) {
 // Real Google login via Firebase Auth — loaded dynamically to keep bundle small
 // Firebase config for letsbrag project
 const FB_CONFIG = {
-  apiKey:            import.meta.env.VITE_FIREBASE_API_KEY || "",
+  apiKey:            "AIzaSyDZsrO48cWcLdmREovQ4t9p2PANwilGyew",
   authDomain:        "letsbrag.firebaseapp.com",
   projectId:         "letsbrag",
   storageBucket:     "letsbrag.firebasestorage.app",
