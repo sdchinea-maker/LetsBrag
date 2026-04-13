@@ -183,7 +183,7 @@ async function goToCheckout(priceId) {
 // Real Google login via Firebase Auth — loaded dynamically to keep bundle small
 // Firebase config for letsbrag project
 const FB_CONFIG = {
-  apiKey:            import.meta.env.VITE_FIREBASE_API_KEY,
+  apiKey:            import.meta.env.VITE_FIREBASE_API_KEY || "",
   authDomain:        "letsbrag.firebaseapp.com",
   projectId:         "letsbrag",
   storageBucket:     "letsbrag.firebasestorage.app",
@@ -258,8 +258,31 @@ async function loadUserData(uid) {
 async function signInWithGoogle() {
   const fb = await loadFirebase();
   if (!fb) throw new Error("Firebase unavailable");
-  const { signInWithPopup } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
-  return signInWithPopup(fb.auth, fb.provider);
+  const { signInWithPopup, signInWithRedirect, getRedirectResult } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
+  // Try popup first — if it fails use redirect (works on all mobile browsers)
+  try {
+    return await signInWithPopup(fb.auth, fb.provider);
+  } catch(e) {
+    if (e.code === "auth/popup-blocked" || e.code === "auth/popup-closed-by-user" || e.code === "auth/cancelled-popup-request") {
+      // Fall back to redirect — works on all mobile browsers
+      await signInWithRedirect(fb.auth, fb.provider);
+      return null; // Page will redirect and come back
+    }
+    throw e;
+  }
+}
+
+async function checkRedirectResult() {
+  try {
+    const fb = await loadFirebase();
+    if (!fb) return null;
+    const { getRedirectResult } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
+    const result = await getRedirectResult(fb.auth);
+    return result;
+  } catch(e) {
+    console.warn("Redirect result error:", e);
+    return null;
+  }
 }
 
 async function signOutUser() {
@@ -2433,6 +2456,15 @@ export default function App() {
     setFirebaseReady(true);
     // Restore Firebase auth session on page reload
     let unsubscribe = ()=>{};
+    // Check if returning from Google redirect sign-in
+    checkRedirectResult().then(result => {
+      if (result?.user) {
+        setUser(result.user);
+        setLoggedIn(true);
+        syncFromCloud(result.user);
+      }
+    });
+
     onAuthReady((u) => {
       if (u) {
         setUser(u);
