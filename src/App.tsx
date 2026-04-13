@@ -140,10 +140,10 @@ const hasAI = () => {
 
 
 // ─── STRIPE CONFIGURATION ────────────────────────────────────────────────────
-const STRIPE_KEY    = import.meta.env.VITE_STRIPE_KEY || "";
+const STRIPE_KEY    = import.meta.env.VITE_STRIPE_KEY;
 const STRIPE_PRICES = {
-  monthly: import.meta.env.VITE_STRIPE_MONTHLY || "price_1TLQU4KLDAImwgiP8gA8S8pm",
-  annual:  import.meta.env.VITE_STRIPE_ANNUAL  || "price_1TLQV7KLDAImwgiPyyNR0wJ3",
+  monthly: import.meta.env.VITE_STRIPE_MONTHLY,
+  annual:  import.meta.env.VITE_STRIPE_ANNUAL,
 };
 const APP_URL = "https://letsbrag.netlify.app";
 
@@ -183,7 +183,7 @@ async function goToCheckout(priceId) {
 // Real Google login via Firebase Auth — loaded dynamically to keep bundle small
 // Firebase config for letsbrag project
 const FB_CONFIG = {
-  apiKey:            import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyDZsr048cWcLdmREovQ4t9p2PANwilGyew",
+  apiKey:            import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain:        "letsbrag.firebaseapp.com",
   projectId:         "letsbrag",
   storageBucket:     "letsbrag.firebasestorage.app",
