@@ -1,5 +1,5 @@
 // ============================================================
-//  LetsBrag — Sailor Achievement Tracker
+//  LetsBrag™ — Military Career Achievement Tracker
 //  Firebase Auth + Firestore + Offline + Voice Dictation
 // ============================================================
 
@@ -26,16 +26,255 @@ const AI_HEADERS = () => ({
   "anthropic-dangerous-direct-browser-access": "true",
 });
 
-// ─── NO EXTERNAL DEPENDENCIES ────────────────────────────────────────────────
-// Firebase login is handled separately. App works fully offline with
-// localStorage. Google login button shows but uses demo mode until
-// Firebase is wired in via a separate firebase.ts config file.
-async function initFirebase() { return true; }
-const auth = null;
-const googleProvider = null;
-const signInWithPopup = null;
-const signOut = null;
-const onAuthStateChanged = null;
+
+
+// ─── LIGHT MODE TOKENS ───────────────────────────────────────────────────────
+const CL = {
+  navy:"#F0F4FF", navyMid:"#E2E8F4", navyCard:"#FFFFFF", navyBorder:"#CBD5E8",
+  red:"#DC2626", redLight:"#EF4444", gold:"#D97706", blue:"#2563EB", green:"#16A34A",
+  text:"#0F172A", textDim:"#475569", textFaint:"#94A3B8",
+};
+
+// ─── TIER CONFIGURATION ──────────────────────────────────────────────────────
+const TIERS = {
+  free: {
+    id:"free", name:"Free Trial", badge:"FREE", color:"#7A8FA8",
+    monthlyPrice:0, annualPrice:0,
+    description:"Try LetsBrag free for 7 days",
+    targetRank:"All ranks",
+    tabs:["overview","goals","tasks","byquarter","brag","awards","dates","iloveme","docs","help"],
+    features:[
+      "Overview dashboard",
+      "Goals tracker",
+      "Achievement log",
+      "Quarterly tracker",
+      "Brag Doc (no AI)",
+      "Awards tracker",
+      "Key dates countdown",
+      "I Love Me book",
+      "Career documents",
+      "Help & reference",
+    ],
+    aiFeatures: false,
+    trialDays: 7,
+  },
+  basic: {
+    id:"basic", name:"Enlisted Basic", badge:"BASIC", color:"#3E89FF",
+    monthlyPrice:4.99, annualPrice:39.99,
+    description:"Everything a junior enlisted Sailor or Soldier needs",
+    targetRank:"E1–E4",
+    tabs:["overview","goals","tasks","byquarter","brag","awards","dates","iloveme","docs","help"],
+    features:[
+      "Overview dashboard",
+      "Goals tracker",
+      "Achievement log (unlimited)",
+      "Quarterly tracker",
+      "Brag Doc (no AI)",
+      "Awards tracker",
+      "Key dates countdown",
+      "I Love Me book",
+      "Career documents",
+      "Help & reference",
+      "Offline access",
+      "Voice dictation",
+    ],
+    aiFeatures: false,
+    trialDays: 7,
+  },
+  nco: {
+    id:"nco", name:"NCO Pro", badge:"PRO", color:"#CE3334",
+    monthlyPrice:9.99, annualPrice:79.99,
+    description:"AI-powered tools for NCOs and mid-grade enlisted",
+    targetRank:"E5–E6",
+    tabs:["overview","goals","tasks","byquarter","brag","awards","dates","coach","package","iloveme","docs","help"],
+    features:[
+      "Everything in Enlisted Basic",
+      "AI Career Coach (chat)",
+      "AI Eval Bullet Generator",
+      "Package Builder",
+      "Career Timeline",
+      "Priority support",
+    ],
+    aiFeatures: true,
+    trialDays: 7,
+  },
+  promax: {
+    id:"promax", name:"Pro Max", badge:"PRO MAX", color:"#A78BFA",
+    monthlyPrice:14.99, annualPrice:119.99,
+    description:"The complete career platform — every feature unlocked",
+    targetRank:"E7+ · Officers · Transitioning",
+    tabs:["overview","goals","tasks","byquarter","brag","awards","dates","coach","timeline","transition","package","iloveme","docs","profile","help"],
+    features:[
+      "Everything in NCO Pro",
+      "Career Timeline",
+      "Transition Assistant",
+      "Military-to-civilian resume builder",
+      "LinkedIn profile generator",
+      "Early access to new features",
+      "All future tab additions",
+    ],
+    aiFeatures: true,
+    trialDays: 7,
+  },
+};
+
+// During beta/test phase — set this to "promax" to give everyone full access
+const BETA_TIER = "promax";
+const BETA_MODE = true; // Set to false when Stripe is wired in
+
+const getUserTier = () => {
+  if (BETA_MODE) return BETA_TIER;
+  try { return localStorage.getItem("lb_tier") || "free"; } catch { return "free"; }
+};
+
+const hasAccess = (tabId) => {
+  const tier = TIERS[getUserTier()] || TIERS.free;
+  return tier.tabs.includes(tabId);
+};
+
+const hasAI = () => {
+  if (BETA_MODE) return true;
+  const tier = TIERS[getUserTier()] || TIERS.free;
+  return tier.aiFeatures;
+};
+
+
+// ─── STRIPE CONFIGURATION ────────────────────────────────────────────────────
+const STRIPE_KEY    = "pk_live_51TLQ1LKLDAImwgiPuN7PuKb8IMhA7WkYkjitxQEvDEBqBUgEQRJoVxzgnj3KpyQs733w49TdbM4kISITdOMPFwR000BbCscYCv";
+const STRIPE_PRICES = {
+  monthly: "price_1TLQU4KLDAImwgiP8gA8S8pm",
+  annual:  "price_1TLQV7KLDAImwgiPyyNR0wJ3",
+};
+const APP_URL = "https://letsbrag.netlify.app";
+
+// Dynamically load Stripe.js and open checkout
+async function goToCheckout(priceId) {
+  // Load stripe.js if not already loaded
+  if (!window.Stripe) {
+    await new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = "https://js.stripe.com/v3/";
+      s.onload = resolve;
+      s.onerror = reject;
+      document.head.appendChild(s);
+    });
+  }
+  const stripe = window.Stripe(STRIPE_KEY);
+  const { error } = await stripe.redirectToCheckout({
+    lineItems: [{ price: priceId, quantity: 1 }],
+    mode: "subscription",
+    successUrl: APP_URL + "?subscribed=true",
+    cancelUrl:  APP_URL + "?checkout=cancelled",
+    billingAddressCollection: "auto",
+    allowPromotionCodes: true,
+    subscriptionData: {
+      trial_period_days: 7,
+      trial_settings: {
+        end_behavior: {
+          missing_payment_method: "cancel"
+        }
+      }
+    },
+  });
+  if (error) alert("Checkout error: " + error.message);
+}
+
+// ─── FIREBASE AUTHENTICATION ─────────────────────────────────────────────────
+// Real Google login via Firebase Auth — loaded dynamically to keep bundle small
+// Firebase config for letsbrag project
+const FB_CONFIG = {
+  apiKey:            "AIzaSyDZsr048cWcLdmREovQ4t9p2PANwilGyew",
+  authDomain:        "letsbrag.firebaseapp.com",
+  projectId:         "letsbrag",
+  storageBucket:     "letsbrag.firebasestorage.app",
+  messagingSenderId: "196979143235",
+  appId:             "1:196979143235:web:91521873aa86e4958b5af6"
+};
+
+// Load Firebase dynamically — only when needed, keeps bundle fast
+let _auth = null;
+let _db   = null;
+let _provider = null;
+let _fbLoaded = false;
+
+async function loadFirebase() {
+  if (_fbLoaded) return { auth: _auth, db: _db, provider: _provider };
+  try {
+    const [
+      { initializeApp, getApps },
+      { getAuth, GoogleAuthProvider },
+      { getFirestore }
+    ] = await Promise.all([
+      import("https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js"),
+      import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js"),
+      import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js"),
+    ]);
+    const app = getApps().length ? getApps()[0] : initializeApp(FB_CONFIG);
+    _auth     = getAuth(app);
+    _db       = getFirestore(app);
+    _provider = new GoogleAuthProvider();
+    _provider.addScope("email");
+    _provider.addScope("profile");
+    _fbLoaded = true;
+    return { auth: _auth, db: _db, provider: _provider };
+  } catch(e) {
+    console.error("Firebase load error:", e);
+    return null;
+  }
+}
+
+// ── FIRESTORE HELPERS ────────────────────────────────────────────────────────
+// Save user data to Firestore — called after any change
+async function saveUserData(uid, data) {
+  try {
+    const fb = await loadFirebase();
+    if (!fb?.db) return;
+    const { doc, setDoc, serverTimestamp } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
+    await setDoc(doc(fb.db, "users", uid), {
+      ...data,
+      updatedAt: serverTimestamp(),
+      uid,
+    }, { merge: true });
+  } catch(e) {
+    console.warn("Firestore save error:", e.message);
+    // Silent fail — data is still in localStorage
+  }
+}
+
+// Load user data from Firestore — called on login
+async function loadUserData(uid) {
+  try {
+    const fb = await loadFirebase();
+    if (!fb?.db) return null;
+    const { doc, getDoc } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
+    const snap = await getDoc(doc(fb.db, "users", uid));
+    return snap.exists() ? snap.data() : null;
+  } catch(e) {
+    console.warn("Firestore load error:", e.message);
+    return null;
+  }
+}
+
+async function signInWithGoogle() {
+  const fb = await loadFirebase();
+  if (!fb) throw new Error("Firebase unavailable");
+  const { signInWithPopup } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
+  return signInWithPopup(fb.auth, fb.provider);
+}
+
+async function signOutUser() {
+  const fb = await loadFirebase();
+  if (!fb) return;
+  const { signOut } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
+  return signOut(fb.auth);
+}
+
+async function onAuthReady(callback) {
+  const fb = await loadFirebase();
+  if (!fb) { callback(null); return ()=>{}; }
+  const { onAuthStateChanged } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
+  return onAuthStateChanged(fb.auth, callback);
+}
 
 // ─── STYLES / TOKENS ─────────────────────────────────────────────────────────
 const FONTS = `@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=DM+Sans:wght@400;500;600&display=swap');`;
@@ -76,9 +315,9 @@ a { color: inherit; text-decoration: none; }
 `;
 
 const C = {
-  navy:"#060E1C", navyMid:"#0D1829", navyCard:"#111E32", navyBorder:"#1C2E48",
-  red:"#CE3334", redLight:"#FF4E4F", gold:"#F5A623", blue:"#3E89FF", green:"#2ECC71",
-  text:"#E8EDF5", textDim:"#7A8FA8", textFaint:"#3A4E68",
+  navy:"#0A1628", navyMid:"#111E35", navyCard:"#152240", navyBorder:"#1E3050",
+  red:"#DC2626", redLight:"#EF4444", gold:"#F59E0B", blue:"#3E89FF", green:"#2ECC71",
+  text:"#E8EDF5", textDim:"#8FA3BC", textFaint:"#3A4E68",
 };
 
 const PIE = {
@@ -119,125 +358,229 @@ const SAMPLE_TASKS = [
   { id:6, name:"Naval Station Food Drive Lead", status:"Complete", priority:"Low", pie:"E", quarter:"Q3 (Jul–Sep)", evalPeriod:"Periodic", requestor:"MWR / Chapel", commandObjective:"Community Outreach", description:"Organized ship-wide food drive across 4 departments.", impact:"1,847 lbs collected — largest single-ship contribution in base history.", visibility:"Community-wide", evidence:"", feedback:'"Selfless service." — CAPT Wallace', skills:["Community Service","Leadership"], createdAt:"2026-08-05" },
 ];
 
-const EMPTY_TASK    = { name:"", status:"Not Started", priority:"Medium", pie:"P", quarter:"Q1 (Jan–Mar)", evalPeriod:"Periodic", requestor:"", commandObjective:"Mission Readiness", description:"", impact:"", visibility:"Division Officer only", evidence:"", feedback:"", skills:[], createdAt:"" };
+const EMPTY_TASK    = { name:"", status:"Not Started", priority:"Medium", pie:"P", quarter:"Q1 (Jan–Mar)", evalPeriod:"Periodic", requestor:"", commandObjective:"Mission Readiness", description:"", impact:"", visibility:"Division Officer only", evidence:"", feedback:"", skills:[], receipts:[], createdAt:"" };
 const EMPTY_PROFILE = { name:"", paygrade:"E-5", rate:"", ship:"", command:"", prd:"", bio:"" };
 const EMPTY_GOAL    = { id:0, goal:"", description:"", startDate:"", completionDate:"", priority:"Medium", status:"In Progress" };
 
 
 // ─── BRANCH CONFIGURATION ────────────────────────────────────────────────────
 const BRANCHES = {
+
+  // ── NAVY ──────────────────────────────────────────────────────────────────
   Navy: {
     name:"Navy", emoji:"⚓", color:"#003087", accent:"#CE3334",
     memberTitle:"Sailor", membersTitle:"Sailors",
-    evalDoc:"EVAL / FITREP", evalTypes:["Periodic","Detachment","Promotion","Fitness Report","CHIEFEVAL"],
-    rankLabel:"Rate/Rating", unitLabel:"Ship/Command", locationLabel:"Homeport",
-    ratingLabel:"Rate", mosLabel:"Rate",
+    evalDoc:"EVAL / FITREP",
+    evalSystem:`U.S. Navy uses the Enlisted Evaluation Report (EVAL) for E1–E6 and the Fitness Report (FITREP) for E7+ and Officers. EVALs assess performance in areas including Professional Knowledge, Quality of Work, Military Bearing, Teamwork, and Leadership. Graded on a 1–5 scale. The top block (5.0) is critical for advancement. FITREPs assess mission accomplishment, professional attributes, and promotion potential. Competitive rankings among peers are used for selection boards.`,
+    evalTypes:["Periodic","Detachment of Individual","Special","Promotion/Frocking","Separation/Retirement","CHIEFEVAL"],
+    evalGrades:["5.0 — Early Promote / #1 of peers","4.0 — Must Promote","3.8 — Promotable","3.6 — Progressing","Below 3.6 — Significant Problems"],
+    rankLabel:"Rate / Rating", unitLabel:"Ship / Command", locationLabel:"Homeport",
+    paygradeGroups:{
+      juniorEnlisted:["E-1 Seaman Recruit","E-2 Seaman Apprentice","E-3 Seaman"],
+      seniorEnlisted:["E-4 Petty Officer 3rd Class","E-5 Petty Officer 2nd Class","E-6 Petty Officer 1st Class"],
+      chiefEnlisted: ["E-7 Chief Petty Officer","E-8 Senior Chief Petty Officer","E-9 Master Chief Petty Officer"],
+      warrantOfficer:["W-1 Warrant Officer","W-2 CWO2","W-3 CWO3","W-4 CWO4","W-5 CWO5"],
+      officer:       ["O-1 Ensign","O-2 LTJG","O-3 Lieutenant","O-4 LCDR","O-5 Commander","O-6 Captain","O-7 RDML","O-8 RADM","O-9 VADM","O-10 Admiral"],
+    },
     paygrades:["E-1 Seaman Recruit","E-2 Seaman Apprentice","E-3 Seaman","E-4 Petty Officer 3rd Class","E-5 Petty Officer 2nd Class","E-6 Petty Officer 1st Class","E-7 Chief Petty Officer","E-8 Senior Chief","E-9 Master Chief","W-1","W-2","W-3","W-4","W-5","O-1 Ensign","O-2 LTJG","O-3 Lieutenant","O-4 LCDR","O-5 Commander","O-6 Captain","O-7 RDML","O-8 RADM","O-9 VADM","O-10 Admiral"],
     visibility:["Division Officer only","Department Head","XO","CO","Group/Squadron","Fleet/TYCOM","Community-wide"],
     objectives:["Mission Readiness","Force Multiplication","Sailor Development","Community Outreach","Administrative Excellence","Safety","Retention"],
     skills:["Leadership","Tactical Proficiency","Damage Control","Watch Standing","Training & Mentorship","Administrative","Seamanship","Navigation","Communications","Maintenance & Logistics","Physical Readiness","Community Service","Education"],
-    iloveCats:["Award Certificate","Commendation Letter","Photo — Ceremony","Photo — Underway","Qualification Card","NEC Certificate","Other"],
-    docCats:["Career Roadmap","Rate Training Manual","NAVADMIN / Directive","PRD / Orders","Transfer Docs","Personal Statement / Bio","Resume / Package","Other"],
-    pieGuidance:"Aim for ~60% Performance, ~25% Self-Improvement, ~15% Exposure. Your leadership looks at all three.",
-    bragIntro:"Hand to your LPO or Chief before EVAL season.",
-    sampleTasks: [
-      {id:1,name:"DC Training Program Overhaul",status:"Complete",priority:"High",pie:"P",quarter:"Q1 (Jan–Mar)",evalPeriod:"Periodic",requestor:"LT Ramirez, DCA",commandObjective:"Mission Readiness",description:"Redesigned DC qual card system and created 12 new hands-on drills.",impact:"DC qual rate increased from 54% to 91% across 47 Sailors in 8 weeks. Zero INSURV discrepancies.",visibility:"CO",evidence:"",feedback:'"Single-handedly transformed our DC program." — LT Ramirez',skills:["Leadership","Damage Control"],createdAt:"2026-01-20"},
-      {id:2,name:"E-6 Advancement Exam — Scored 74.5 (Top 8%)",status:"Complete",priority:"High",pie:"I",quarter:"Q1 (Jan–Mar)",evalPeriod:"Promotion",requestor:"Self / ESO",commandObjective:"Sailor Development",description:"Self-studied 6+ hours/week. Mentored 2 junior Sailors simultaneously.",impact:"Top 8% Navy-wide. Both mentored Sailors also advanced.",visibility:"Department Head",evidence:"",feedback:'"Sets the gold standard for personal advancement." — Chief Alvarez',skills:["Education","Training & Mentorship"],createdAt:"2026-02-10"},
+    iloveCats:["EVAL/FITREP Copy","Award Certificate","Commendation Letter","Photo — Ceremony","Photo — Underway","Qualification Card","NEC Certificate","Training Certificate","Other"],
+    docCats:["Career Roadmap","Rate Training Manual","NAVADMIN / Directive","PRD / Orders","Transfer Docs","Personal Statement / Bio","Advancement Study Guide","Resume / Package","Other"],
+    pieGuidance:"Aim for ~60% Performance, ~25% Self-Improvement, ~15% Exposure. Your reporting senior looks at all three areas. Top-block EVALs require demonstrated performance AND visible growth.",
+    bragIntro:"Submit to your LPO or Chief 4–6 weeks before your EVAL close-out date.",
+    advancementTips:[
+      "Pass the Navy-wide advancement exam (E4–E6)",
+      "Earn Performance Mark Average (PMA) from EVALs",
+      "Complete required Professional Military Education (PME)",
+      "Earn warfare qualification (Surface, Air, Sub, etc.)",
+      "Complete all required NEC courses",
+    ],
+    sampleTasks:[
+      {id:1,name:"DC Training Program Overhaul",status:"Complete",priority:"High",pie:"P",quarter:"Q1 (Jan–Mar)",evalPeriod:"Periodic",requestor:"LT Ramirez, DCA",commandObjective:"Mission Readiness",description:"Redesigned DC qual card system and created 12 new hands-on drills.",impact:"DC qual rate increased from 54% to 91% across 47 Sailors in 8 weeks. Zero INSURV discrepancies.",visibility:"CO",evidence:"",feedback:'"Single-handedly transformed our DC program." — LT Ramirez',skills:["Leadership","Damage Control"],receipts:[],createdAt:"2026-01-20"},
+      {id:2,name:"E-6 Advancement Exam — Scored 74.5 (Top 8%)",status:"Complete",priority:"High",pie:"I",quarter:"Q1 (Jan–Mar)",evalPeriod:"Promotion",requestor:"Self / ESO",commandObjective:"Sailor Development",description:"Self-studied 6+ hours/week. Mentored 2 junior Sailors simultaneously.",impact:"Top 8% Navy-wide. Both mentored Sailors also advanced.",visibility:"Department Head",evidence:"",feedback:'"Sets the gold standard." — Chief Alvarez',skills:["Education","Training & Mentorship"],receipts:[],createdAt:"2026-02-10"},
     ]
   },
+
+  // ── ARMY ──────────────────────────────────────────────────────────────────
   Army: {
     name:"Army", emoji:"⭐", color:"#4B5320", accent:"#FFD700",
     memberTitle:"Soldier", membersTitle:"Soldiers",
-    evalDoc:"OER / NCOER", evalTypes:["Annual","Change of Rater","Relief for Cause","Complete the Record","60-Day Rater"],
-    rankLabel:"MOS", unitLabel:"Unit/Post", locationLabel:"Installation",
-    ratingLabel:"MOS", mosLabel:"MOS",
+    evalDoc:"NCOER / OER",
+    evalSystem:`The Army uses three distinct evaluation systems based on rank. E1–E4 do NOT receive formal evaluations — progress is tracked through DA Form 4856 Counseling Statements, the Army Career Tracker (ACT), and the Promotion Points System. Points are earned through military education, civilian education, weapons qualification, physical fitness, and awards. E5–E9 receive the Noncommissioned Officer Evaluation Report (NCOER) which assesses five attributes: Character (Army Values, empathy, warrior ethos), Presence (military bearing, fitness, confidence), Intellect (mental agility, innovation, judgment), Leads (leads others, extends influence, builds trust), Develops (develops others, stewardship, creates positive climate), and Achieves (gets results). Rated Exceeds Standard, Met Standard, or Did Not Meet Standard. Officers and Warrant Officers use the Officer Evaluation Report (OER) which focuses on Army leadership attributes, mission accomplishment, and potential for increased responsibility.`,
+    evalTypes:["Annual","Change of Rater","Relief for Cause","Complete the Record","60-Day Rater","Temporary Duty"],
+    evalGrades:["Exceeds Standard — Highly Qualified","Met Standard — Qualified","Did Not Meet Standard — Not Qualified"],
+    rankLabel:"MOS", unitLabel:"Unit / Installation", locationLabel:"Installation",
+    paygradeGroups:{
+      juniorEnlisted:["E-1 Private","E-2 Private 2nd Class","E-3 Private 1st Class","E-4 Specialist / Corporal"],
+      seniorEnlisted:["E-5 Sergeant","E-6 Staff Sergeant","E-7 Sergeant First Class","E-8 Master Sergeant / 1SG","E-9 Sergeant Major / CSM / SMA"],
+      warrantOfficer:["W-1 WO1","W-2 CW2","W-3 CW3","W-4 CW4","W-5 CW5"],
+      officer:       ["O-1 2LT","O-2 1LT","O-3 Captain","O-4 Major","O-5 LTC","O-6 Colonel","O-7 BG","O-8 MG","O-9 LTG","O-10 General"],
+    },
     paygrades:["E-1 Private","E-2 Private 2nd Class","E-3 Private 1st Class","E-4 Specialist/Corporal","E-5 Sergeant","E-6 Staff Sergeant","E-7 Sergeant First Class","E-8 Master Sergeant/1SG","E-9 Sergeant Major/CSM/SMA","W-1 WO1","W-2 CW2","W-3 CW3","W-4 CW4","W-5 CW5","O-1 2LT","O-2 1LT","O-3 Captain","O-4 Major","O-5 LTC","O-6 Colonel","O-7 BG","O-8 MG","O-9 LTG","O-10 General"],
     visibility:["Platoon Leader only","Company Commander","Battalion Commander","Brigade Commander","Division/Corps","Army-wide","Community-wide"],
     objectives:["Mission Readiness","Force Multiplication","Soldier Development","Community Outreach","Administrative Excellence","Safety","Retention"],
-    skills:["Leadership","Tactical Proficiency","Warrior Tasks","Duty Performance","Training & Mentorship","Administrative","Land Navigation","Communications","Maintenance & Logistics","Physical Readiness","Community Service","Education"],
-    iloveCats:["Award Certificate","Commendation Letter","Photo — Ceremony","Photo — Deployment","Qualification Badge","MOS Certificate","Other"],
-    docCats:["Career Roadmap","MOS Training Manual","ALARACT / Directive","PCS Orders","Transfer Docs","Personal Statement / Bio","Resume / Package","Other"],
-    pieGuidance:"Aim for ~60% Performance, ~25% Self-Improvement, ~15% Exposure. Your rater and SR look at the whole Soldier.",
-    bragIntro:"Hand to your NCO or rater before OER/NCOER season.",
-    sampleTasks: [
-      {id:1,name:"Squad Readiness Overhaul — FY26 Q1",status:"Complete",priority:"High",pie:"P",quarter:"Q1 (Jan–Mar)",evalPeriod:"Annual",requestor:"CPT Williams, Platoon Leader",commandObjective:"Mission Readiness",description:"Redesigned squad training schedule and qualification tracking for all 9 Soldiers.",impact:"Squad qualification rate improved from 67% to 100% in 6 weeks. Unit passed EXEVAL with zero deficiencies.",visibility:"Battalion Commander",evidence:"",feedback:'"SGT Johnson set the standard for the entire company." — CPT Williams',skills:["Leadership","Tactical Proficiency"],createdAt:"2026-01-15"},
-      {id:2,name:"Warrior Leader Course — Commandant's List",status:"Complete",priority:"High",pie:"I",quarter:"Q2 (Apr–Jun)",evalPeriod:"Change of Rater",requestor:"Self / S1",commandObjective:"Soldier Development",description:"Completed WLC and graduated on Commandant's List. Top performer in land navigation and leadership exercises.",impact:"Top 10% of 48-Soldier class. Directly selected for early promotion consideration.",visibility:"Company Commander",evidence:"",feedback:'"One of the strongest WLC graduates we have seen." — 1SG Torres',skills:["Leadership","Education"],createdAt:"2026-04-20"},
+    skills:["Leadership","Tactical Proficiency","Warrior Tasks","Character & Presence","Training & Mentorship","Administrative","Land Navigation","Communications","Maintenance & Logistics","Physical Readiness","Community Service","Education","Counseling"],
+    iloveCats:["NCOER / OER Copy","DA Form 4856 Counseling","Award Certificate","Commendation Letter","Photo — Ceremony","Photo — Deployment","Qualification Badge","Training Certificate","Other"],
+    docCats:["Career Roadmap","MOS Training Manual","ALARACT / Directive","PCS Orders","Transfer Docs","Personal Statement / Bio","Promotion Points Worksheet","Resume / Package","Other"],
+    pieGuidance:"E1–E4: Focus on Promotion Points (weapons qual, PT, education, awards, military ed). E5+: NCOER looks at Character, Presence, Intellect, Leads, Develops, and Achieves. All six attributes matter for Exceeds Standard.",
+    bragIntro:"Submit your input to your Rater and Senior Rater 4–6 weeks before your NCOER/OER close-out date. E1–E4: bring this to your counseling sessions.",
+    advancementTips:[
+      "E1–E4: Maximize promotion points (education, weapons qual, physical fitness, military education, awards)",
+      "Complete required Professional Military Education (WLC, ALC, SLC, SGM-A)",
+      "Maintain Army Physical Fitness Test (APFT/ACFT) above standard",
+      "Complete DA Form 4856 counseling with your chain of command",
+      "Earn additional certifications and civilian education credits",
+    ],
+    juniorEnlistedNote:"E1–E4 do not receive formal NCOERs. Track your progress through DA Form 4856 counseling statements, promotion points, and Army Career Tracker (ACT). Log your achievements here to prepare for counseling sessions and promotion boards.",
+    sampleTasks:[
+      {id:1,name:"Squad Tactical Readiness — Pre-Deployment Certification",status:"Complete",priority:"High",pie:"P",quarter:"Q1 (Jan–Mar)",evalPeriod:"Annual",requestor:"CPT Williams, Platoon Leader",commandObjective:"Mission Readiness",description:"Led squad readiness training for all 9 Soldiers. Coordinated weapons quals, land nav, and medical readiness checks.",impact:"Squad achieved 100% combat readiness. Zero medical or equipment holds at deployment muster.",visibility:"Battalion Commander",evidence:"",feedback:'"SGT Johnson set the standard for the company." — CPT Williams',skills:["Leadership","Tactical Proficiency"],receipts:[],createdAt:"2026-01-15"},
+      {id:2,name:"Warrior Leader Course — Commandant's List",status:"Complete",priority:"High",pie:"I",quarter:"Q2 (Apr–Jun)",evalPeriod:"Change of Rater",requestor:"Self / S1",commandObjective:"Soldier Development",description:"Completed WLC and graduated on Commandant's List. Top performer in land navigation and leadership exercises.",impact:"Top 10% of 48-Soldier class. Selected for early promotion consideration.",visibility:"Company Commander",evidence:"",feedback:'"One of the strongest WLC graduates we have seen." — 1SG Torres',skills:["Leadership","Education"],receipts:[],createdAt:"2026-04-20"},
     ]
   },
+
+  // ── MARINES ───────────────────────────────────────────────────────────────
   Marines: {
     name:"Marines", emoji:"🦅", color:"#8B0000", accent:"#FFD700",
     memberTitle:"Marine", membersTitle:"Marines",
-    evalDoc:"FITREP / PEREVAL", evalTypes:["Annual","Change of Reporting Senior","Promotion","Separation","Special"],
-    rankLabel:"MOS", unitLabel:"Unit/Command", locationLabel:"Station",
-    ratingLabel:"MOS", mosLabel:"MOS",
+    evalDoc:"PRO/CON · FITREP",
+    evalSystem:`The Marine Corps uses three distinct evaluation systems. E1–E3 receive Proficiency and Conduct Marks (PRO/CON) — two numerical scores on a 0.0–5.0 scale. Proficiency (0–5.0) measures job performance, knowledge, and technical ability. Conduct (0–5.0) measures discipline, bearing, character, and adherence to the UCMJ. These marks directly impact promotion eligibility and are averaged over time. E4–E9 (Corporals through Sergeant Major) receive Performance Evaluations (PEREVAL) similar in structure to the Navy EVAL, but with a strong emphasis on leadership, mission accomplishment, character, and the warfighting mindset. The Marine Corps places unique emphasis on the warrior ethos, combined arms proficiency, and the ability to function in austere conditions. Officers receive the Fitness Report (FITREP) which focuses on command potential, leadership under pressure, decision-making in complex environments, and combat readiness. Comparative assessments among peers are central to officer promotion selection.`,
+    evalTypes:["PRO/CON Marks (E1–E3)","Annual","Change of Reporting Senior","Promotion/Frocking","Separation","Special","Relief for Cause"],
+    evalGrades:["PRO/CON: 5.0 / 5.0 — Outstanding","PRO/CON: 4.0+ / 4.0+ — Above Average","Outstanding — Promote immediately","Excellent — Promote","Above Average — Promote","Average","Below Average"],
+    proConNote:"E1–E3 receive Proficiency (0–5.0) and Conduct (0–5.0) marks. Proficiency = job performance. Conduct = discipline and character. Both scores directly affect promotion eligibility.",
+    rankLabel:"MOS (Military Occupational Specialty)", unitLabel:"Unit / Command", locationLabel:"Station",
+    paygradeGroups:{
+      juniorEnlisted:["E-1 Private","E-2 Private First Class","E-3 Lance Corporal"],
+      seniorEnlisted:["E-4 Corporal","E-5 Sergeant","E-6 Staff Sergeant","E-7 Gunnery Sergeant","E-8 Master Sgt / 1st Sgt","E-9 Master Gunnery Sgt / SgtMaj"],
+      warrantOfficer:["W-1 WO1","W-2 CWO2","W-3 CWO3","W-4 CWO4","W-5 CWO5"],
+      officer:       ["O-1 2ndLt","O-2 1stLt","O-3 Captain","O-4 Major","O-5 LtCol","O-6 Colonel","O-7 BGen","O-8 MajGen","O-9 LtGen","O-10 General"],
+    },
     paygrades:["E-1 Private","E-2 Private First Class","E-3 Lance Corporal","E-4 Corporal","E-5 Sergeant","E-6 Staff Sergeant","E-7 Gunnery Sergeant","E-8 Master Sgt/1st Sgt","E-9 Master Gunnery Sgt/SgtMaj","W-1 WO1","W-2 CWO2","W-3 CWO3","W-4 CWO4","W-5 CWO5","O-1 2ndLt","O-2 1stLt","O-3 Captain","O-4 Major","O-5 LtCol","O-6 Colonel","O-7 BGen","O-8 MajGen","O-9 LtGen","O-10 General"],
     visibility:["Squad Leader only","Platoon Commander","Company Commander","Battalion Commander","Regiment/MEU","Marine Corps-wide","Community-wide"],
     objectives:["Mission Readiness","Force Multiplication","Marine Development","Community Outreach","Administrative Excellence","Safety","Retention"],
-    skills:["Leadership","Tactical Proficiency","Marksmanship","Physical Fitness","Training & Mentorship","Administrative","Amphibious Operations","Communications","Maintenance & Logistics","Physical Readiness","Community Service","Education"],
-    iloveCats:["Award Certificate","Commendation Letter","Photo — Ceremony","Photo — Deployment","Qualification Badge","MOS Certificate","Other"],
-    docCats:["Career Roadmap","MOS Training Manual","MARADMIN / Directive","PCS Orders","Transfer Docs","Personal Statement / Bio","Resume / Package","Other"],
-    pieGuidance:"Aim for ~60% Performance, ~25% Self-Improvement, ~15% Exposure. Reporting Seniors look at the whole Marine.",
-    bragIntro:"Hand to your NCO or Reporting Senior before FITREP season.",
-    sampleTasks: [
-      {id:1,name:"Squad Tactical Readiness — Pre-Deployment",status:"Complete",priority:"High",pie:"P",quarter:"Q1 (Jan–Mar)",evalPeriod:"Annual",requestor:"1stLt Rivera, Platoon Commander",commandObjective:"Mission Readiness",description:"Led pre-deployment readiness training for 13-Marine squad. Coordinated weapons quals, comms checks, and medical readiness.",impact:"Squad achieved 100% combat readiness certification. Zero medical or equipment holds at deployment muster.",visibility:"Battalion Commander",evidence:"",feedback:'"Cpl Martinez performed above grade. Recommend for meritorious promotion." — 1stLt Rivera',skills:["Leadership","Tactical Proficiency"],createdAt:"2026-01-10"},
+    skills:["Leadership","Tactical Proficiency","Marksmanship","Warfighting Mindset","Training & Mentorship","Administrative","Amphibious Operations","Communications","Maintenance & Logistics","Physical Fitness","Community Service","Education","Character & Discipline"],
+    iloveCats:["FITREP Copy","PRO/CON Marks Record","Award Certificate","Commendation Letter","Photo — Ceremony","Photo — Deployment","Qualification Badge","Training Certificate","Other"],
+    docCats:["Career Roadmap","MOS Training Manual","MARADMIN / Directive","PCS Orders","Transfer Docs","Personal Statement / Bio","Advancement Study Guide","Resume / Package","Other"],
+    pieGuidance:"E1–E3: PRO/CON marks directly affect promotion. Maximize both scores through technical excellence and impeccable conduct. E4+: Evaluations emphasize warfighting mindset, leadership, and mission accomplishment. Character matters as much as performance.",
+    bragIntro:"Submit your input to your Reporting Senior 4–6 weeks before your FITREP close-out date. E1–E3: bring this documentation to support your PRO/CON marks.",
+    juniorEnlistedNote:"E1–E3 receive Proficiency and Conduct Marks (PRO/CON) — two scores on a 5.0 scale. Proficiency measures your job skills. Conduct measures your discipline and character. Log achievements here to maximize both scores.",
+    advancementTips:[
+      "E1–E3: Maximize PRO/CON marks through technical proficiency and discipline",
+      "Complete required Military Occupational Specialty (MOS) training",
+      "Maintain physical fitness above minimum standards (PFT/CFT)",
+      "Complete required Professional Military Education (Corporal's Course, Sergeant's Course)",
+      "Earn combat and service awards — each matters for promotion selection",
+    ],
+    sampleTasks:[
+      {id:1,name:"Pre-Deployment Readiness — 100% Certification",status:"Complete",priority:"High",pie:"P",quarter:"Q1 (Jan–Mar)",evalPeriod:"Annual",requestor:"1stLt Rivera, Platoon Commander",commandObjective:"Mission Readiness",description:"Led pre-deployment readiness for 13-Marine squad. Coordinated weapons quals, comms checks, and medical readiness.",impact:"100% combat readiness certification. Zero holds at deployment muster.",visibility:"Battalion Commander",evidence:"",feedback:'"Cpl Martinez performed above grade." — 1stLt Rivera',skills:["Leadership","Tactical Proficiency"],receipts:[],createdAt:"2026-01-10"},
     ]
   },
+
+  // ── AIR FORCE ─────────────────────────────────────────────────────────────
   "Air Force": {
-    name:"Air Force", emoji:"✈️", color:"#00308F", accent:"#silver",
+    name:"Air Force", emoji:"✈️", color:"#00308F", accent:"#7FB2E5",
     memberTitle:"Airman", membersTitle:"Airmen",
-    evalDoc:"OPR / EPR", evalTypes:["Annual","Closeout","Stratification","Firewall 5","Promotion"],
-    rankLabel:"AFSC", unitLabel:"Squadron/Wing", locationLabel:"Base",
-    ratingLabel:"AFSC", mosLabel:"AFSC",
+    evalDoc:"EPB / OPB",
+    evalSystem:`The Air Force uses two primary performance brief systems. The Enlisted Performance Brief (EPB) replaced the traditional EPR in 2022. It applies to all enlisted Airmen and documents performance across three areas: Performance (job performance, mission impact, technical expertise), Leadership (influence, development of others, teamwork), and Impact (results, innovations, contributions beyond primary duties). EPBs are used for promotions, assignments, and career development boards. The Officer Performance Brief (OPB) applies to officers and focuses on Leadership (mission impact, vision, command climate), Mission Impact (results achieved, innovation, efficiency), and Potential (readiness for increased responsibility, strategic thinking, development). The Performance Reporting Form (PRF) is used for senior officers and focuses specifically on leadership qualities, mission impact at the strategic level, and promotion potential to senior grades. Both EPB and OPB use a narrative format with specific performance statements rather than numerical scores.`,
+    evalTypes:["Annual","Closeout","Stratification","Firewall 5 Referral","Promotion","Officer PRF"],
+    evalGrades:["Promote — Clearly Exceeds Standards","Must Promote","Promote","Do Not Promote Now","Do Not Promote"],
+    rankLabel:"AFSC (Air Force Specialty Code)", unitLabel:"Squadron / Wing", locationLabel:"Base",
+    paygradeGroups:{
+      juniorEnlisted:["E-1 Airman Basic","E-2 Airman","E-3 Airman First Class","E-4 Senior Airman"],
+      seniorEnlisted:["E-5 Staff Sergeant","E-6 Technical Sergeant","E-7 Master Sergeant","E-8 Senior Master Sergeant","E-9 Chief Master Sergeant"],
+      officer:       ["O-1 2nd Lt","O-2 1st Lt","O-3 Captain","O-4 Major","O-5 Lt Colonel","O-6 Colonel","O-7 Brig General","O-8 Maj General","O-9 Lt General","O-10 General"],
+    },
     paygrades:["E-1 Airman Basic","E-2 Airman","E-3 Airman First Class","E-4 Senior Airman","E-5 Staff Sergeant","E-6 Technical Sergeant","E-7 Master Sergeant","E-8 Senior Master Sergeant","E-9 Chief Master Sergeant","O-1 2nd Lt","O-2 1st Lt","O-3 Captain","O-4 Major","O-5 Lt Colonel","O-6 Colonel","O-7 Brig General","O-8 Maj General","O-9 Lt General","O-10 General"],
     visibility:["Flight Commander only","Squadron Commander","Group Commander","Wing Commander","MAJCOM","Air Force-wide","Community-wide"],
-    objectives:["Mission Readiness","Force Multiplication","Airman Development","Community Outreach","Administrative Excellence","Safety","Retention"],
-    skills:["Leadership","Tactical Proficiency","Mission Planning","Sortie Execution","Training & Mentorship","Administrative","Communications","Maintenance & Logistics","Physical Readiness","Community Service","Education","Innovation"],
-    iloveCats:["Award Certificate","Commendation Letter","Photo — Ceremony","Photo — TDY/Deployment","Qualification Badge","AFSC Certificate","Other"],
-    docCats:["Career Roadmap","AFSC Training Manual","AFMAN / Directive","PCS Orders","Transfer Docs","Personal Statement / Bio","Resume / Package","Other"],
-    pieGuidance:"Aim for ~60% Performance, ~25% Self-Improvement, ~15% Exposure. Your rater looks at the whole Airman.",
-    bragIntro:"Hand to your supervisor before OPR/EPR season.",
-    sampleTasks: [
-      {id:1,name:"Sortie Generation Rate Improvement",status:"Complete",priority:"High",pie:"P",quarter:"Q1 (Jan–Mar)",evalPeriod:"Annual",requestor:"Capt Chen, Flight Commander",commandObjective:"Mission Readiness",description:"Led maintenance team initiative to reduce aircraft turnaround time through improved pre-flight checklists.",impact:"Sortie generation rate improved by 22%. Squadron achieved highest MC rate in wing for Q1.",visibility:"Wing Commander",evidence:"",feedback:'"SSgt Davis is the definition of a mission-first Airman." — Capt Chen',skills:["Leadership","Maintenance & Logistics"],createdAt:"2026-01-18"},
+    objectives:["Mission Readiness","Force Multiplication","Airman Development","Community Outreach","Administrative Excellence","Safety","Innovation & Efficiency"],
+    skills:["Leadership","Mission Planning","Sortie Execution","Innovation","Training & Mentorship","Administrative","Communications","Maintenance & Logistics","Physical Readiness","Community Service","Education","Technical Expertise"],
+    iloveCats:["EPB / OPB Copy","Award Certificate","Commendation Letter","Photo — Ceremony","Photo — TDY/Deployment","Qualification Badge","AFSC Certificate","Training Certificate","Other"],
+    docCats:["Career Roadmap","AFSC Training Manual","AFMAN / Directive","PCS Orders","Transfer Docs","Personal Statement / Bio","Decoration Package","Resume / Package","Other"],
+    pieGuidance:"EPB/OPB focuses on Performance, Leadership, and Impact — aligning closely with PIE. Narrative bullets must be specific and quantifiable. Stratification (ranking among peers) is critical for promotion to E-7 and above.",
+    bragIntro:"Submit your performance inputs to your supervisor 4–6 weeks before your EPB/OPB close-out date. Strong bullets use specific numbers and show mission impact.",
+    advancementTips:[
+      "Write strong EPB bullets: Action + Result + Impact format",
+      "Earn stratification ranking (top %) — critical for E-7+ promotion",
+      "Complete required Professional Military Education (Airman Leadership School, NCOA, SNCOA)",
+      "Maintain physical fitness standards (Physical Fitness Assessment)",
+      "Complete college education — Air Force rewards degree completion",
+    ],
+    sampleTasks:[
+      {id:1,name:"Sortie Generation Rate Improvement — Q1",status:"Complete",priority:"High",pie:"P",quarter:"Q1 (Jan–Mar)",evalPeriod:"Annual",requestor:"Capt Chen, Flight Commander",commandObjective:"Mission Readiness",description:"Led maintenance initiative to reduce aircraft turnaround time through improved pre-flight procedures.",impact:"Sortie generation rate improved 22%. Squadron achieved highest MC rate in wing for Q1.",visibility:"Wing Commander",evidence:"",feedback:'"SSgt Davis is the definition of a mission-first Airman." — Capt Chen',skills:["Leadership","Maintenance & Logistics"],receipts:[],createdAt:"2026-01-18"},
     ]
   },
+
+  // ── SPACE FORCE ───────────────────────────────────────────────────────────
   "Space Force": {
     name:"Space Force", emoji:"🚀", color:"#1C2951", accent:"#40C4FF",
     memberTitle:"Guardian", membersTitle:"Guardians",
-    evalDoc:"OPR / EPR", evalTypes:["Annual","Closeout","Stratification","Promotion","Separation"],
-    rankLabel:"AFSC/Specialty", unitLabel:"Squadron/Delta", locationLabel:"Garrison",
-    ratingLabel:"Specialty", mosLabel:"Specialty",
+    evalDoc:"EPB / OPB",
+    evalSystem:`The Space Force uses the same Enlisted Performance Brief (EPB) and Officer Performance Brief (OPB) system as the Air Force, from which most Space Force members transitioned. The EPB covers Performance, Leadership, and Impact for enlisted Guardians. The OPB covers Leadership, Mission Impact, and Potential for officers. Given the unique nature of Space Force missions — satellite operations, orbital mechanics, cyber operations, and space domain awareness — performance narratives should emphasize technical depth, innovation, and the strategic impact of space capabilities. The Space Force is the newest and smallest branch with under 10,000 Guardians, making individual contributions highly visible. Every achievement has outsized impact on this tight-knit force.`,
+    evalTypes:["Annual","Closeout","Stratification","Promotion","Special","Separation"],
+    evalGrades:["Promote — Clearly Exceeds Standards","Must Promote","Promote","Do Not Promote Now","Do Not Promote"],
+    rankLabel:"Specialty Code", unitLabel:"Squadron / Delta", locationLabel:"Garrison",
+    paygradeGroups:{
+      juniorEnlisted:["E-1 Specialist 1","E-2 Specialist 2","E-3 Specialist 3","E-4 Specialist 4"],
+      seniorEnlisted:["E-5 Sergeant","E-6 Technical Sergeant","E-7 Master Sergeant","E-8 Senior Master Sergeant","E-9 Chief Master Sergeant"],
+      officer:       ["O-1 2nd Lt","O-2 1st Lt","O-3 Captain","O-4 Major","O-5 Lt Colonel","O-6 Colonel","O-7 Brig General","O-8 Maj General","O-9 Lt General","O-10 General"],
+    },
     paygrades:["E-1 Specialist 1","E-2 Specialist 2","E-3 Specialist 3","E-4 Specialist 4","E-5 Sergeant","E-6 Technical Sergeant","E-7 Master Sergeant","E-8 Senior Master Sergeant","E-9 Chief Master Sergeant","O-1 2nd Lt","O-2 1st Lt","O-3 Captain","O-4 Major","O-5 Lt Colonel","O-6 Colonel","O-7 Brig General","O-8 Maj General","O-9 Lt General","O-10 General"],
     visibility:["Flight Commander only","Squadron Commander","Delta Commander","Field Command","Space Force-wide","DoD-wide","Community-wide"],
-    objectives:["Mission Readiness","Space Domain Awareness","Guardian Development","Community Outreach","Administrative Excellence","Safety","Retention"],
-    skills:["Leadership","Space Operations","Orbital Mechanics","Cyber Operations","Training & Mentorship","Administrative","Communications","Intelligence","Mission Planning","Physical Readiness","Community Service","Education"],
-    iloveCats:["Award Certificate","Commendation Letter","Photo — Ceremony","Photo — Mission","Qualification Badge","Specialty Certificate","Other"],
-    docCats:["Career Roadmap","Specialty Training Manual","SPACEFOR Directive","PCS Orders","Transfer Docs","Personal Statement / Bio","Resume / Package","Other"],
-    pieGuidance:"Aim for ~60% Performance, ~25% Self-Improvement, ~15% Exposure. The Space Force values innovation and cross-domain thinking.",
-    bragIntro:"Hand to your supervisor before OPR/EPR season.",
-    sampleTasks: [
-      {id:1,name:"Satellite Command & Control Readiness",status:"Complete",priority:"High",pie:"P",quarter:"Q1 (Jan–Mar)",evalPeriod:"Annual",requestor:"Capt Okonkwo, Flight Commander",commandObjective:"Mission Readiness",description:"Led C2 readiness review for assigned satellite constellation. Identified and corrected 3 critical procedure gaps.",impact:"100% C2 readiness certification achieved. Zero anomalies during on-orbit operations for 90 days.",visibility:"Delta Commander",evidence:"",feedback:'"Sgt Park operates at a level well above grade." — Capt Okonkwo',skills:["Space Operations","Leadership"],createdAt:"2026-01-22"},
+    objectives:["Mission Readiness","Space Domain Awareness","Guardian Development","Innovation","Administrative Excellence","Safety","Cyber / Technical Excellence"],
+    skills:["Leadership","Space Operations","Orbital Mechanics","Cyber Operations","Training & Mentorship","Administrative","Communications","Intelligence","Mission Planning","Physical Readiness","Community Service","Education","Innovation & Technology"],
+    iloveCats:["EPB / OPB Copy","Award Certificate","Commendation Letter","Photo — Ceremony","Photo — Mission","Qualification Badge","Specialty Certificate","Training Certificate","Other"],
+    docCats:["Career Roadmap","Specialty Training Manual","SPACEFOR Directive","PCS Orders","Transfer Docs","Personal Statement / Bio","Decoration Package","Resume / Package","Other"],
+    pieGuidance:"Space Force EPB/OPB rewards technical depth and innovation alongside traditional leadership. Given the small force size, every Guardian's performance is highly visible. Emphasize space-specific technical achievements and cross-domain impact.",
+    bragIntro:"Submit your performance inputs to your supervisor 4–6 weeks before your EPB/OPB close-out date. Highlight technical innovation and mission impact on the space domain.",
+    advancementTips:[
+      "Write EPB bullets emphasizing space domain impact and technical innovation",
+      "Complete Space Force Professional Military Education requirements",
+      "Earn technical certifications in your specialty area",
+      "Demonstrate cross-functional contributions — Space Force rewards versatility",
+      "Maintain physical fitness standards (Physical Fitness Assessment)",
+    ],
+    sampleTasks:[
+      {id:1,name:"Satellite C2 Readiness Certification",status:"Complete",priority:"High",pie:"P",quarter:"Q1 (Jan–Mar)",evalPeriod:"Annual",requestor:"Capt Okonkwo, Flight Commander",commandObjective:"Mission Readiness",description:"Led C2 readiness review for assigned satellite constellation. Identified and corrected 3 critical procedure gaps.",impact:"100% C2 readiness certified. Zero anomalies during on-orbit operations for 90 consecutive days.",visibility:"Delta Commander",evidence:"",feedback:'"Sgt Park operates at a level well above grade." — Capt Okonkwo',skills:["Space Operations","Leadership"],receipts:[],createdAt:"2026-01-22"},
     ]
   },
+
+  // ── COAST GUARD ───────────────────────────────────────────────────────────
   "Coast Guard": {
     name:"Coast Guard", emoji:"🛡️", color:"#003087", accent:"#FF6600",
-    memberTitle:"Guardsman", membersTitle:"Coast Guardsmen",
-    evalDoc:"OER / EVAL", evalTypes:["Periodic","Detachment","Promotion","Special","Enlisted Employee Review"],
-    rankLabel:"Rate/Rating", unitLabel:"Cutter/Sector", locationLabel:"Sector",
-    ratingLabel:"Rate", mosLabel:"Rate",
+    memberTitle:"Coast Guardsman", membersTitle:"Coast Guardsmen",
+    evalDoc:"EER / OER",
+    evalSystem:`The Coast Guard uses two evaluation systems based on rank. E1–E3 do NOT receive formal Enlisted Evaluation Reports (EERs). Progress is tracked through qualifications, supervisor input, and the advancement exam system. Competency in rate-specific skills, physical fitness standards, and completion of required training are the primary advancement factors for junior enlisted. E4–E9 receive the Enlisted Employee Review (EER) which evaluates performance against specific competencies scored numerically: Leadership (influence, developing subordinates, initiative), Professional/Specialty Knowledge (technical skills, rate-specific expertise), Results/Effectiveness (mission accomplishment, quality of work), Communication (written, verbal, interpersonal), and Military Readiness (bearing, fitness, adherence to standards). Officers and Chief Warrant Officers receive the Officer Evaluation Report (OER) which focuses on leadership impact, command potential, decision-making under pressure, and long-term potential for increased responsibility. The Coast Guard is unique in its law enforcement, search and rescue, maritime security, and environmental protection missions — performance narratives should reflect these diverse mission areas.`,
+    evalTypes:["Periodic","Detachment","Promotion","Special","Enlisted Employee Review","Officer Evaluation Report"],
+    evalGrades:["Exceeds Standards — Promote Ahead of Peers","Meets Standards — Promote","Does Not Meet Standards"],
+    rankLabel:"Rate / Rating", unitLabel:"Cutter / Sector", locationLabel:"Sector",
+    paygradeGroups:{
+      juniorEnlisted:["E-1 Seaman Recruit","E-2 Seaman Apprentice","E-3 Seaman"],
+      seniorEnlisted:["E-4 Petty Officer 3rd Class","E-5 Petty Officer 2nd Class","E-6 Petty Officer 1st Class","E-7 Chief Petty Officer","E-8 Senior Chief Petty Officer","E-9 Master Chief Petty Officer"],
+      warrantOfficer:["W-2 CWO2","W-3 CWO3","W-4 CWO4"],
+      officer:       ["O-1 Ensign","O-2 LTJG","O-3 Lieutenant","O-4 LCDR","O-5 Commander","O-6 Captain","O-7 RDML","O-8 RADM","O-9 VADM","O-10 Admiral"],
+    },
     paygrades:["E-1 Seaman Recruit","E-2 Seaman Apprentice","E-3 Seaman","E-4 Petty Officer 3rd Class","E-5 Petty Officer 2nd Class","E-6 Petty Officer 1st Class","E-7 Chief Petty Officer","E-8 Senior Chief","E-9 Master Chief","W-2 CWO2","W-3 CWO3","W-4 CWO4","O-1 Ensign","O-2 LTJG","O-3 Lieutenant","O-4 LCDR","O-5 Commander","O-6 Captain","O-7 RDML","O-8 RADM","O-9 VADM","O-10 Admiral"],
     visibility:["Division Officer only","Department Head","XO","CO","District/Sector","Coast Guard-wide","Community-wide"],
-    objectives:["Mission Readiness","Search & Rescue","Guardsman Development","Community Outreach","Maritime Law Enforcement","Safety","Retention"],
-    skills:["Leadership","Tactical Proficiency","Search & Rescue","Maritime Law Enforcement","Training & Mentorship","Administrative","Seamanship","Navigation","Communications","Maintenance & Logistics","Physical Readiness","Community Service","Education"],
-    iloveCats:["Award Certificate","Commendation Letter","Photo — Ceremony","Photo — Patrol / Underway","Qualification Card","Rate Certificate","Other"],
-    docCats:["Career Roadmap","Rate Training Manual","ALCOAST / Directive","PCS Orders","Transfer Docs","Personal Statement / Bio","Resume / Package","Other"],
-    pieGuidance:"Aim for ~60% Performance, ~25% Self-Improvement, ~15% Exposure. Your supervisor and CO look at the complete Guardsman.",
-    bragIntro:"Hand to your LPO or Chief before EVAL season.",
-    sampleTasks: [
-      {id:1,name:"SAR Case — Successful Rescue 47nm Offshore",status:"Complete",priority:"High",pie:"P",quarter:"Q1 (Jan–Mar)",evalPeriod:"Periodic",requestor:"LT Nguyen, Operations Officer",commandObjective:"Search & Rescue",description:"Served as on-scene coordinator for 47nm offshore distress case. Coordinated with air and surface assets in deteriorating weather.",impact:"4 persons rescued with zero injuries. Case closed in 3.2 hours — 40% faster than sector average.",visibility:"CO",evidence:"",feedback:'"BM2 Santos performed exceptionally under pressure." — LT Nguyen',skills:["Search & Rescue","Leadership"],createdAt:"2026-01-12"},
+    objectives:["Mission Readiness","Search & Rescue","Maritime Law Enforcement","Coast Guardsman Development","Community Outreach","Environmental Protection","Safety"],
+    skills:["Leadership","Search & Rescue","Maritime Law Enforcement","Seamanship","Training & Mentorship","Administrative","Navigation","Communications","Maintenance & Logistics","Physical Readiness","Community Service","Education","Incident Command"],
+    iloveCats:["EER / OER Copy","Award Certificate","Commendation Letter","Photo — Ceremony","Photo — Patrol/Underway","Qualification Card","Rate Certificate","Training Certificate","Other"],
+    docCats:["Career Roadmap","Rate Training Manual","ALCOAST / Directive","PCS Orders","Transfer Docs","Personal Statement / Bio","Advancement Study Guide","Resume / Package","Other"],
+    pieGuidance:"EER competencies map directly to PIE: Leadership and Military Readiness → Performance. Professional Knowledge and Communication → Self-Improvement. Results/Effectiveness and community contributions → Exposure. Score consistently across all five competency areas.",
+    bragIntro:"Submit your input to your Supervisor 4–6 weeks before your EER close-out date. E1–E3: bring this documentation to your supervisor for input into the advancement system.",
+    juniorEnlistedNote:"E1–E3 do not receive formal EERs. Your advancement is tracked through rate qualifications, training completion, physical fitness, and supervisor input. Log achievements here to demonstrate readiness for advancement and to bring to supervisor counseling.",
+    advancementTips:[
+      "Pass the Service-Wide Exam (SWE) for E4–E6 advancement",
+      "Complete all required rate qualifications and training",
+      "Maintain physical fitness above minimum standards",
+      "Complete required Professional Development (BLET, Pertinent courses)",
+      "Earn performance marks in all five EER competency areas",
+    ],
+    sampleTasks:[
+      {id:1,name:"SAR Case — Successful Rescue 47nm Offshore",status:"Complete",priority:"High",pie:"P",quarter:"Q1 (Jan–Mar)",evalPeriod:"Periodic",requestor:"LT Nguyen, Operations Officer",commandObjective:"Search & Rescue",description:"Served as on-scene coordinator for 47nm offshore distress case in deteriorating weather. Coordinated air and surface assets.",impact:"4 persons rescued with zero injuries. Case closed in 3.2 hours — 40% faster than sector average.",visibility:"CO",evidence:"",feedback:'"BM2 Santos performed exceptionally under pressure." — LT Nguyen',skills:["Search & Rescue","Leadership"],receipts:[],createdAt:"2026-01-12"},
     ]
   },
 };
-
 const OPSEC_RULES = [
   "Do NOT include specific unit locations, coordinates, or deployment destinations",
   "Do NOT include classified information, mission details, or sensitive operations",
@@ -401,10 +744,40 @@ function FileModal({ existing, categories, onSave, onClose }) {
 
 // ─── ACHIEVEMENT MODAL ────────────────────────────────────────────────────────
 function AchModal({ task, onSave, onDelete, onClose, isEdit, B }) {
-  const [form,setForm]=useState(task);
+  const [form,setForm]=useState({...task, receipts: task.receipts||[]});
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
   const appendVoice=(k,v)=>setForm(f=>({...f,[k]:f[k]?f[k]+" "+v:v}));
   const toggle=s=>set("skills",form.skills.includes(s)?form.skills.filter(x=>x!==s):[...form.skills,s]);
+  const fileRef = useRef();
+
+  const addReceipt = (file) => {
+    if (!file) return;
+    const MAX = 2 * 1024 * 1024;
+    if (file.size > MAX) {
+      const go = window.confirm(`This file is ${(file.size/1024/1024).toFixed(1)}MB. Files over 2MB may not persist after refresh. Continue?`);
+      if (!go) return;
+    }
+    const reader = new FileReader();
+    reader.onload = e => {
+      const receipt = { id: Date.now(), name: file.name, type: file.type, size: file.size, dataUrl: e.target.result };
+      setForm(f => ({...f, receipts: [...(f.receipts||[]), receipt]}));
+    };
+    reader.onerror = () => alert("Could not read file. Please try again.");
+    reader.readAsDataURL(file);
+  };
+
+  const removeReceipt = (id) => {
+    setForm(f => ({...f, receipts: (f.receipts||[]).filter(r => r.id !== id)}));
+  };
+
+  const openReceipt = (r) => {
+    if (!r.dataUrl) { alert("File data not available. Please re-upload."); return; }
+    try {
+      const a = document.createElement("a");
+      a.href = r.dataUrl; a.target = "_blank"; a.rel = "noopener noreferrer";
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    } catch(e) { window.open(r.dataUrl, "_blank"); }
+  };
   const inp={ fontSize:13,border:`1px solid ${C.navyBorder}`,borderRadius:8,padding:"9px 11px",width:"100%",background:C.navyMid,outline:"none",color:C.text };
   const sl={...inp,cursor:"pointer"};
   const lbl={ fontSize:11,fontWeight:600,color:C.textDim,display:"block",marginBottom:4 };
@@ -444,6 +817,57 @@ function AchModal({ task, onSave, onDelete, onClose, isEdit, B }) {
             <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:13,color:C.red,letterSpacing:1.5,textTransform:"uppercase",marginBottom:10,paddingBottom:6,borderBottom:`1px solid ${C.navyBorder}` }}>Core Competencies</div>
             <div style={{ display:"flex",flexWrap:"wrap",gap:7 }}>{(B?.skills||SKILLS_OPTIONS).map(s=><button key={s} onClick={()=>toggle(s)} style={{ padding:"6px 12px",borderRadius:99,border:`1.5px solid ${form.skills.includes(s)?C.red:C.navyBorder}`,background:form.skills.includes(s)?"rgba(206,51,52,.15)":C.navyMid,color:form.skills.includes(s)?C.redLight:C.textDim,fontSize:12,fontWeight:600,cursor:"pointer" }}>{s}</button>)}</div>
           </div>
+          {/* ── RECEIPTS / EVIDENCE FILES ── */}
+          <div style={{ marginBottom:20 }}>
+            <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:13,color:C.red,letterSpacing:1.5,textTransform:"uppercase",marginBottom:10,paddingBottom:6,borderBottom:`1px solid ${C.navyBorder}` }}>
+              📎 Evidence Files <span style={{ fontSize:10,color:C.textFaint,fontWeight:400,letterSpacing:0,textTransform:"none" }}> — receipts, orders, certificates, photos</span>
+            </div>
+
+            {/* Uploaded receipts */}
+            {(form.receipts||[]).length > 0 && (
+              <div style={{ display:"flex",flexDirection:"column",gap:8,marginBottom:12 }}>
+                {(form.receipts||[]).map(r => {
+                  const isImg = r.type?.startsWith("image/");
+                  const isPDF = r.type === "application/pdf";
+                  const ext = r.name?.split(".").pop().toUpperCase() || "FILE";
+                  const kb = r.size ? `${(r.size/1024).toFixed(0)}KB` : "";
+                  return (
+                    <div key={r.id} style={{ display:"flex",alignItems:"center",gap:10,background:C.navyMid,borderRadius:9,padding:"9px 12px",border:`1px solid ${C.navyBorder}` }}>
+                      {/* Thumbnail or icon */}
+                      <div onClick={()=>openReceipt(r)} style={{ width:36,height:36,borderRadius:7,background:C.navyCard,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer",overflow:"hidden",border:`1px solid ${C.navyBorder}` }}>
+                        {isImg && r.dataUrl
+                          ? <img src={r.dataUrl} alt={r.name} style={{ width:"100%",height:"100%",objectFit:"cover" }} />
+                          : <span style={{ fontSize:18 }}>{isPDF ? "📄" : "📎"}</span>}
+                      </div>
+                      {/* File info */}
+                      <div style={{ flex:1,minWidth:0 }}>
+                        <div onClick={()=>openReceipt(r)} style={{ fontSize:12,fontWeight:600,color:C.text,cursor:"pointer",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{r.name}</div>
+                        <div style={{ fontSize:10,color:C.textFaint,marginTop:1 }}>{ext} {kb && `· ${kb}`}</div>
+                      </div>
+                      {/* Open + Remove */}
+                      <div style={{ display:"flex",gap:6,flexShrink:0 }}>
+                        <button onClick={()=>openReceipt(r)} style={{ background:"rgba(62,137,255,.15)",color:"#60A5FA",border:"none",borderRadius:6,padding:"4px 9px",fontSize:11,fontWeight:600,cursor:"pointer" }}>Open</button>
+                        <button onClick={()=>removeReceipt(r.id)} style={{ background:"rgba(206,51,52,.12)",color:C.redLight,border:"none",borderRadius:6,padding:"4px 9px",fontSize:11,fontWeight:600,cursor:"pointer" }}>✕</button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Upload button */}
+            <input ref={fileRef} type="file" accept="image/*,application/pdf,.doc,.docx,.txt" style={{ display:"none" }}
+              onChange={e=>{ if(e.target.files[0]) addReceipt(e.target.files[0]); e.target.value=""; }} />
+            <button onClick={()=>fileRef.current?.click()}
+              style={{ width:"100%",padding:"10px",background:"rgba(62,137,255,.08)",color:"#60A5FA",border:`1.5px dashed rgba(62,137,255,.3)`,borderRadius:9,fontWeight:600,fontSize:13,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8 }}>
+              <span style={{ fontSize:16 }}>📎</span>
+              {(form.receipts||[]).length > 0 ? `Add Another File (${(form.receipts||[]).length} attached)` : "Attach Evidence File"}
+            </button>
+            <div style={{ fontSize:10,color:C.textFaint,marginTop:5,textAlign:"center" }}>
+              Images, PDFs, Word docs, or text files · Max 2MB recommended · Files saved with this achievement
+            </div>
+          </div>
+
           <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",paddingTop:14,borderTop:`1px solid ${C.navyBorder}` }}>
             <div>{isEdit&&<button onClick={()=>{ if(window.confirm("Delete this achievement? This cannot be undone.")) onDelete(task.id); }} style={{ background:"rgba(206,51,52,.15)",color:C.redLight,border:`1px solid rgba(206,51,52,.3)`,padding:"9px 15px",borderRadius:8,fontWeight:600,fontSize:13,cursor:"pointer" }}>🗑 Delete Achievement</button>}</div>
             <div style={{ display:"flex",gap:8 }}>
@@ -469,7 +893,14 @@ function AchTable({ tasks, onRowClick }) {
           <tr key={t.id} onClick={()=>onRowClick(t)} style={{ cursor:"pointer",borderBottom:`1px solid ${C.navyBorder}`,animationDelay:`${i*30}ms` }} className="fade-up"
             onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,255,255,.03)";}} onMouseLeave={e=>{e.currentTarget.style.background="transparent";}}>
             <td style={{ padding:"11px 13px",width:30 }}><div style={{ width:18,height:18,borderRadius:5,border:`2px solid ${t.status==="Complete"?C.green:C.navyBorder}`,background:t.status==="Complete"?"rgba(46,204,113,.2)":"transparent",display:"flex",alignItems:"center",justifyContent:"center" }}>{t.status==="Complete"&&<span style={{ color:C.green,fontSize:11 }}>✓</span>}</div></td>
-            <td style={{ padding:"11px 13px" }}><div style={{ fontWeight:600,fontSize:13,color:C.text }}>{t.name}</div>{t.commandObjective&&<div style={{ fontSize:11,color:C.textFaint,marginTop:2 }}>{t.commandObjective}</div>}<div className="show-sm-only" style={{ marginTop:5 }}><StatusBadge value={t.status} small /></div></td>
+            <td style={{ padding:"11px 13px" }}>
+              <div style={{ display:"flex",alignItems:"center",gap:7 }}>
+                <div style={{ fontWeight:600,fontSize:13,color:C.text }}>{t.name}</div>
+                {t.receipts?.length>0&&<span style={{ background:"rgba(62,137,255,.15)",color:"#60A5FA",borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:600,flexShrink:0 }}>📎 {t.receipts.length}</span>}
+              </div>
+              {t.commandObjective&&<div style={{ fontSize:11,color:C.textFaint,marginTop:2 }}>{t.commandObjective}</div>}
+              <div className="show-sm-only" style={{ marginTop:5 }}><StatusBadge value={t.status} small /></div>
+            </td>
             <td style={{ padding:"11px 13px" }} className="hide-sm"><StatusBadge value={t.status} /></td>
             <td style={{ padding:"11px 13px" }} className="hide-sm"><PieBadge value={t.pie} /></td>
             <td style={{ padding:"11px 13px",fontSize:12,color:C.textDim }} className="hide-sm">{Q_SHORT[t.quarter]||t.quarter}</td>
@@ -529,13 +960,14 @@ function QuickLog({ onSave }) {
 }
 
 // ─── PROFILE ──────────────────────────────────────────────────────────────────
-function ProfileScreen({ profile, setProfile, user, onLogout, appYear, setAppYear, B, onChangeBranch, apiEnabled, onOpenApiSetup }) {
+function ProfileScreen({ profile, setProfile, user, onLogout, appYear, setAppYear, B, onChangeBranch, apiEnabled, onOpenApiSetup, subscribed, subBilling, setSubBilling, handleCheckout, checkingOut, onSyncNow, syncStatus }) {
   const [editing,setEditing]=useState(false), [form,setForm]=useState(profile);
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
   const save=()=>{
     setProfile(form);
     try { localStorage.setItem("lb_profile", JSON.stringify(form)); } catch(e) {}
     setEditing(false);
+    // Trigger immediate cloud save via profile prop update
   };
   const inp={ fontSize:13,border:`1px solid ${C.navyBorder}`,borderRadius:8,padding:"9px 11px",width:"100%",background:C.navyMid,outline:"none",color:C.text };
   const lbl={ fontSize:11,fontWeight:600,color:C.textDim,display:"block",marginBottom:4 };
@@ -548,18 +980,85 @@ function ProfileScreen({ profile, setProfile, user, onLogout, appYear, setAppYea
           <div>
             <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:800,fontSize:24,color:C.text,lineHeight:1 }}>{profile.name||user?.displayName||"Your Name"}</div>
             <div style={{ fontSize:13,color:C.textDim,marginTop:4 }}>{[profile.paygrade,profile.rate].filter(Boolean).join(" ")}{profile.ship&&<span> · {profile.ship}</span>}</div>
-            {user?.email&&<div style={{ fontSize:11,color:C.textFaint,marginTop:2 }}>{user.email}</div>}
+            {user?.email&&<div style={{ fontSize:11,color:C.textFaint,marginTop:2 }}>✓ Signed in · {user.email}</div>}
           </div>
         </div>
         {profile.prd&&<div style={{ marginTop:14,padding:"8px 12px",background:"rgba(245,166,35,.1)",borderRadius:8,border:`1px solid rgba(245,166,35,.2)`,fontSize:12,color:C.gold }}>📅 PRD: {profile.prd}</div>}
       </div>
+
+      {/* ── SUBSCRIPTION CARD ── */}
+      <div style={{ background:C.navyCard,borderRadius:14,padding:20,marginBottom:16,border:`1px solid ${subscribed?"rgba(46,204,113,.3)":C.navyBorder}` }}>
+        <div style={{ display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14,flexWrap:"wrap",gap:10 }}>
+          <div>
+            <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:800,fontSize:17,color:C.text,marginBottom:2 }}>
+              {subscribed ? "✅ LetsBrag™ Basic — Active" : "💳 Subscribe to LetsBrag™"}
+            </div>
+            <div style={{ fontSize:12,color:C.textDim,lineHeight:1.5 }}>
+              {subscribed
+                ? `${subBilling==="annual"?"$39.99/year":"$4.99/month"} · Thank you for supporting LetsBrag™`
+                : "Unlimited achievements, goals, brag doc, awards, key dates, and more."}
+            </div>
+          </div>
+          {subscribed&&<span style={{ background:"rgba(46,204,113,.15)",color:C.green,borderRadius:99,padding:"4px 12px",fontSize:11,fontWeight:700,border:"1px solid rgba(46,204,113,.3)" }}>ACTIVE</span>}
+        </div>
+
+        {!subscribed&&(
+          <>
+            <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12 }}>
+              {[
+                {label:"Monthly",price:"$4.99",sub:"per month",billing:"monthly",popular:false},
+                {label:"Annual", price:"$39.99",sub:"per year · save 33%",billing:"annual",popular:true},
+              ].map(({label,price,sub,billing,popular})=>(
+                <div key={billing} style={{ background:C.navyMid,borderRadius:10,padding:"14px",border:`1px solid ${popular?C.red:C.navyBorder}`,position:"relative",cursor:"pointer",transition:"all .15s" }}
+                  onClick={()=>{ setSubBilling(billing); }}>
+                  {popular&&<div style={{ position:"absolute",top:-10,left:"50%",transform:"translateX(-50%)",background:C.red,color:"#fff",borderRadius:99,padding:"2px 10px",fontSize:9,fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,whiteSpace:"nowrap" }}>BEST VALUE</div>}
+                  <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:4 }}>
+                    <div style={{ width:16,height:16,borderRadius:"50%",border:`2px solid ${subBilling===billing?C.red:C.navyBorder}`,background:subBilling===billing?"rgba(220,38,38,.2)":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0 }}>
+                      {subBilling===billing&&<div style={{ width:8,height:8,borderRadius:"50%",background:C.red }} />}
+                    </div>
+                    <span style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:14,color:C.text }}>{label}</span>
+                  </div>
+                  <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:800,fontSize:24,color:popular?C.red:C.text }}>{price}</div>
+                  <div style={{ fontSize:11,color:C.textDim,marginTop:1 }}>{sub}</div>
+                </div>
+              ))}
+            </div>
+
+            <button
+              onClick={()=>handleCheckout(subBilling)}
+              disabled={checkingOut}
+              style={{ width:"100%",padding:"13px",background:checkingOut?"rgba(220,38,38,.4)":C.red,color:"#fff",border:"none",borderRadius:10,fontFamily:"'Barlow Condensed',sans-serif",fontWeight:800,fontSize:17,cursor:checkingOut?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:10,transition:"all .2s",marginBottom:10 }}>
+              {checkingOut
+                ? <><span className="spin" style={{ display:"inline-block",width:18,height:18,border:"2px solid rgba(255,255,255,.4)",borderTopColor:"#fff",borderRadius:"50%" }} /> Opening Checkout...</>
+                : <>🔒 Subscribe {subBilling==="annual"?"— $39.99/year":"— $4.99/month"} · 7-Day Free Trial</>}
+            </button>
+            <div style={{ textAlign:"center",fontSize:11,color:C.textFaint,lineHeight:1.7 }}>
+              Secure checkout powered by Stripe · Cancel anytime · No commitment
+            </div>
+          </>
+        )}
+
+        {subscribed&&(
+          <div style={{ display:"flex",gap:9,flexWrap:"wrap" }}>
+            <button
+              onClick={()=>{ window.open("https://billing.stripe.com/p/login/test_28o8yk6bMcMV2dy288","_blank"); }}
+              style={{ padding:"9px 16px",background:C.navyMid,color:C.textDim,border:`1px solid ${C.navyBorder}`,borderRadius:8,fontWeight:600,fontSize:12,cursor:"pointer" }}>
+              Manage Billing →
+            </button>
+            <button
+              onClick={()=>{ if(window.confirm("Are you sure you want to cancel? You will lose access at the end of your billing period.")) { setSubscribed(false); } }}
+              style={{ padding:"9px 16px",background:"none",color:C.textFaint,border:"none",fontSize:11,cursor:"pointer",textDecoration:"underline" }}>
+              Cancel Subscription
+            </button>
+          </div>
+        )}
+      </div>
       {!editing?(
         <div style={{ display:"flex",gap:10,flexWrap:"wrap" }}>
           <button onClick={()=>{setForm(profile);setEditing(true);}} style={{ flex:1,padding:"11px",background:C.red,color:"#fff",border:"none",borderRadius:10,fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:16,cursor:"pointer" }}>Edit Profile</button>
-          <button onClick={onOpenApiSetup} style={{ padding:"11px 14px",background:apiEnabled?"rgba(46,204,113,.15)":"rgba(124,99,255,.15)",color:apiEnabled?C.green:"#A78BFA",border:`1px solid ${apiEnabled?"rgba(46,204,113,.3)":"rgba(124,99,255,.3)"}`,borderRadius:10,fontWeight:600,fontSize:12,cursor:"pointer",whiteSpace:"nowrap" }}>
-            {apiEnabled?"🤖 AI On":"🤖 Enable AI"}
-          </button>
+          <button onClick={()=>alert("AI features — including the Career Coach, Eval Bullet Generator, and Package Builder — are coming in the next version of LetsBrag. Stay tuned!")} style={{ padding:"11px 14px",background:"rgba(124,99,255,.1)",color:"#A78BFA",border:"1px solid rgba(124,99,255,.2)",borderRadius:10,fontWeight:600,fontSize:12,cursor:"pointer",whiteSpace:"nowrap" }}>🤖 AI — Coming Soon</button>
           <button onClick={onChangeBranch} style={{ padding:"11px 14px",background:C.navyMid,color:C.textDim,border:`1px solid ${C.navyBorder}`,borderRadius:10,fontWeight:600,fontSize:12,cursor:"pointer" }}>{B.emoji} Change Branch</button>
+          {onSyncNow&&<button onClick={onSyncNow} style={{ padding:"11px 14px",background:"rgba(46,204,113,.12)",color:C.green,border:`1px solid rgba(46,204,113,.25)`,borderRadius:10,fontWeight:600,fontSize:12,cursor:"pointer",whiteSpace:"nowrap" }}>{syncStatus==="syncing"?"⟳ Syncing...":syncStatus==="synced"?"✓ Synced":"☁ Sync Now"}</button>}
           <button onClick={onLogout} style={{ padding:"11px 14px",background:C.navyMid,color:C.textDim,border:`1px solid ${C.navyBorder}`,borderRadius:10,fontWeight:600,fontSize:13,cursor:"pointer" }}>Sign Out</button>
         </div>
       ):(
@@ -587,6 +1086,142 @@ function ProfileScreen({ profile, setProfile, user, onLogout, appYear, setAppYea
 
 
 
+
+
+// ─── PRICING PAGE ─────────────────────────────────────────────────────────────
+function PricingPage({ currentTier, onSelect, onClose }) {
+  const [billing, setBilling] = useState("annual");
+
+  const tierList = [TIERS.basic, TIERS.nco, TIERS.promax];
+
+  return (
+    <div className="fade-in" style={{ position:"fixed",inset:0,background:"rgba(0,0,0,.9)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",padding:12,overflowY:"auto" }}>
+      <div style={{ width:"100%",maxWidth:700,maxHeight:"95vh",overflowY:"auto" }}>
+        {/* Header */}
+        <div style={{ textAlign:"center",marginBottom:24,position:"relative" }}>
+          {onClose&&<button onClick={onClose} style={{ position:"absolute",right:0,top:0,background:C.navyMid,border:"none",color:C.textDim,width:30,height:30,borderRadius:"50%",cursor:"pointer",fontSize:14 }}>✕</button>}
+          <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:800,fontSize:32,color:C.text,marginBottom:4 }}>Choose Your Plan</div>
+          <div style={{ fontSize:13,color:C.textDim,marginBottom:16 }}>7-day free trial on all plans · Cancel anytime · All plans include offline access</div>
+          {/* Billing toggle */}
+          <div style={{ display:"inline-flex",background:C.navyCard,borderRadius:99,padding:4,border:`1px solid ${C.navyBorder}`,gap:4 }}>
+            {["monthly","annual"].map(b=>(
+              <button key={b} onClick={()=>setBilling(b)}
+                style={{ padding:"7px 18px",borderRadius:99,border:"none",cursor:"pointer",fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:13,background:billing===b?C.red:"transparent",color:billing===b?"#fff":C.textDim,transition:"all .2s" }}>
+                {b==="monthly"?"Monthly":"Annual"}
+                {b==="annual"&&<span style={{ marginLeft:6,background:"rgba(46,204,113,.2)",color:C.green,borderRadius:99,padding:"1px 7px",fontSize:10 }}>Save 33%</span>}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Free trial banner */}
+        <div style={{ background:"rgba(46,204,113,.1)",border:`1px solid rgba(46,204,113,.25)`,borderRadius:10,padding:"10px 16px",marginBottom:16,textAlign:"center",fontSize:12,color:C.green }}>
+          🎉 <strong>Currently in Beta — All features free during testing.</strong> Pricing activates at full launch.
+        </div>
+
+        {/* Tier cards */}
+        <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:14,marginBottom:20 }}>
+          {tierList.map(tier=>{
+            const price = billing==="annual" ? tier.annualPrice : tier.monthlyPrice;
+            const perMonth = billing==="annual" ? (tier.annualPrice/12).toFixed(2) : tier.monthlyPrice.toFixed(2);
+            const isPopular = tier.id==="nco";
+            const isCurrent = currentTier===tier.id;
+
+            return (
+              <div key={tier.id} style={{ background:C.navyCard,borderRadius:14,padding:"20px 18px",border:`2px solid ${isPopular?tier.color:isCurrent?"rgba(46,204,113,.5)":C.navyBorder}`,position:"relative",display:"flex",flexDirection:"column" }}>
+                {isPopular&&<div style={{ position:"absolute",top:-12,left:"50%",transform:"translateX(-50%)",background:C.red,color:"#fff",borderRadius:99,padding:"3px 14px",fontSize:11,fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,whiteSpace:"nowrap" }}>MOST POPULAR</div>}
+                {isCurrent&&<div style={{ position:"absolute",top:-12,right:14,background:"rgba(46,204,113,.2)",color:C.green,border:`1px solid rgba(46,204,113,.4)`,borderRadius:99,padding:"3px 12px",fontSize:10,fontWeight:600 }}>Current Plan</div>}
+
+                <div style={{ marginBottom:12 }}>
+                  <span style={{ background:`${tier.color}25`,color:tier.color,borderRadius:99,padding:"2px 10px",fontSize:10,fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,letterSpacing:.5 }}>{tier.badge}</span>
+                </div>
+                <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:800,fontSize:20,color:C.text,marginBottom:2 }}>{tier.name}</div>
+                <div style={{ fontSize:11,color:C.textDim,marginBottom:14,lineHeight:1.4 }}>{tier.targetRank}</div>
+
+                <div style={{ marginBottom:14 }}>
+                  <span style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:800,fontSize:32,color:tier.color }}>${perMonth}</span>
+                  <span style={{ fontSize:11,color:C.textDim }}>/mo</span>
+                  {billing==="annual"&&<div style={{ fontSize:10,color:C.textFaint,marginTop:2 }}>billed ${tier.annualPrice}/year</div>}
+                </div>
+
+                <div style={{ flex:1,marginBottom:16 }}>
+                  {tier.features.map((f,i)=>(
+                    <div key={i} style={{ display:"flex",alignItems:"flex-start",gap:7,marginBottom:6 }}>
+                      <span style={{ color:tier.color,flexShrink:0,marginTop:1,fontSize:12 }}>✓</span>
+                      <span style={{ fontSize:11,color:C.textDim,lineHeight:1.45 }}>{f}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <button onClick={()=>onSelect&&onSelect(tier.id,billing)}
+                  style={{ width:"100%",padding:"11px",background:isCurrent?"rgba(46,204,113,.15)":tier.color,color:isCurrent?C.green:"#fff",border:isCurrent?`1px solid rgba(46,204,113,.3)`:"none",borderRadius:9,fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:15,cursor:isCurrent?"default":"pointer" }}>
+                  {isCurrent ? "Current Plan" : `Start 7-Day Free Trial`}
+                </button>
+                <div style={{ textAlign:"center",fontSize:10,color:C.textFaint,marginTop:6 }}>No credit card required during beta</div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Compare note */}
+        <div style={{ background:C.navyCard,borderRadius:10,padding:"14px 16px",border:`1px solid ${C.navyBorder}`,marginBottom:16 }}>
+          <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:13,color:C.text,marginBottom:10 }}>Which plan is right for me?</div>
+          <div style={{ display:"flex",flexDirection:"column",gap:8 }}>
+            {[
+              ["🔵","Enlisted Basic — $4.99/mo","E1–E4 · Track achievements, log wins daily, build your brag doc, track awards and key dates. Everything you need before your first eval."],
+              ["🔴","NCO Pro — $9.99/mo","E5–E6 · Everything in Basic plus AI-powered eval bullet generator, AI career coach, and package builder. For NCOs who want a competitive edge."],
+              ["🟣","Pro Max — $14.99/mo","E7+ · Officers · Transitioning · The complete platform. Career timeline, military-to-civilian transition tools, LinkedIn builder, and every future feature we add."],
+            ].map(([dot,title,desc])=>(
+              <div key={title} style={{ display:"flex",gap:10,alignItems:"flex-start" }}>
+                <span style={{ fontSize:14,flexShrink:0 }}>{dot}</span>
+                <div><div style={{ fontSize:12,fontWeight:600,color:C.text,marginBottom:2 }}>{title}</div><div style={{ fontSize:11,color:C.textDim,lineHeight:1.5 }}>{desc}</div></div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ textAlign:"center",fontSize:11,color:C.textFaint,lineHeight:1.7 }}>
+          © 2026 LetsBrag · All plans include a 7-day free trial · Cancel anytime<br/>
+          Not an official DoD product · letsbrag.netlify.app
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── UPGRADE PROMPT ───────────────────────────────────────────────────────────
+function UpgradePrompt({ featureName, requiredTier, onUpgrade, onClose }) {
+  const tier = TIERS[requiredTier] || TIERS.nco;
+  return (
+    <div className="fade-in" style={{ position:"fixed",inset:0,background:"rgba(0,0,0,.8)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",padding:16 }} onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div style={{ background:C.navyCard,borderRadius:16,width:"100%",maxWidth:420,border:`1px solid ${C.navyBorder}`,overflow:"hidden" }}>
+        <div style={{ background:`linear-gradient(135deg,${tier.color}30,${C.navyMid})`,padding:"24px 20px",textAlign:"center",borderBottom:`1px solid ${C.navyBorder}` }}>
+          <div style={{ fontSize:36,marginBottom:8 }}>🔒</div>
+          <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:800,fontSize:22,color:C.text,marginBottom:4 }}>{featureName}</div>
+          <div style={{ fontSize:12,color:C.textDim,lineHeight:1.5 }}>This feature is included in the <strong style={{ color:tier.color }}>{tier.name}</strong> plan and above.</div>
+        </div>
+        <div style={{ padding:"18px 20px" }}>
+          <div style={{ marginBottom:14 }}>
+            {tier.features.slice(0,4).map((f,i)=>(
+              <div key={i} style={{ display:"flex",alignItems:"center",gap:8,marginBottom:7 }}>
+                <span style={{ color:tier.color,fontSize:13 }}>✓</span>
+                <span style={{ fontSize:12,color:C.textDim }}>{f}</span>
+              </div>
+            ))}
+          </div>
+          <div style={{ textAlign:"center",marginBottom:8 }}>
+            <span style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:800,fontSize:28,color:tier.color }}>${tier.monthlyPrice}</span>
+            <span style={{ fontSize:12,color:C.textDim }}>/month · 7-day free trial</span>
+          </div>
+          <button onClick={onUpgrade} style={{ width:"100%",padding:"12px",background:tier.color,color:"#fff",border:"none",borderRadius:9,fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:16,cursor:"pointer",marginBottom:8 }}>
+            Upgrade to {tier.name} →
+          </button>
+          <button onClick={onClose} style={{ width:"100%",padding:"9px",background:"none",color:C.textDim,border:"none",fontSize:12,cursor:"pointer" }}>Maybe later</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ─── TERMS OF SERVICE MODAL ───────────────────────────────────────────────────
 function TosModal({ onAccept }) {
@@ -1472,7 +2107,7 @@ function OnboardingWizard({ onComplete, B, setBranch }) {
   const steps = [
     {
       icon:"👋",
-      title:"Welcome to LetsBrag",
+      title:"Welcome to LetsBrag™",
       subtitle:"Your military career tracker",
       content: (
         <div>
@@ -1481,7 +2116,7 @@ function OnboardingWizard({ onComplete, B, setBranch }) {
             This quick setup takes <strong style={{ color:C.text }}>under 2 minutes.</strong>
           </div>
           <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:8 }}>
-            {[["✅","Log wins daily"],["⭐","Build your brag doc"],["🤖","Get AI career help"]].map(([icon,label])=>(
+            {[["✅","Log wins daily"],["⭐","Build your brag doc"],["🤖","AI Coach — Coming Soon"]].map(([icon,label])=>(
               <div key={label} style={{ background:C.navyMid,borderRadius:10,padding:"12px 8px",textAlign:"center",border:`1px solid ${C.navyBorder}` }}>
                 <div style={{ fontSize:22,marginBottom:6 }}>{icon}</div>
                 <div style={{ fontSize:11,color:C.textDim,lineHeight:1.4 }}>{label}</div>
@@ -1541,28 +2176,26 @@ function OnboardingWizard({ onComplete, B, setBranch }) {
     },
     {
       icon:"🎯",
-      title:"Start With the Essentials",
-      subtitle:"You can always explore more tabs later",
+      title:"Your 3 Core Tabs",
+      subtitle:`Built for the ${B.name} evaluation system`,
       content: (
         <div>
-          <div style={{ fontSize:13,color:C.textDim,lineHeight:1.75,marginBottom:16 }}>
-            LetsBrag has 14 tabs but you only need <strong style={{ color:C.text }}>3 to get started:</strong>
-          </div>
+
           {[
-            ["✅","Achievements","Log your wins here — daily, weekly, whenever something happens. Takes 30 seconds."],
-            ["🎯","Goals","Set 2-3 career goals so you know what you're working toward."],
-            ["⭐","Brag Doc","Your formatted eval-ready document. Builds automatically as you log achievements."],
+            ["✅","Achievements",`Log every win, qual, and contribution. Your ${B.evalDoc} is built from what you log here.`],
+            ["🎯","Goals",`Set ${B.name}-specific career goals — promotions, qualifications, education milestones.`],
+            ["⭐","Brag Doc",`Auto-organized by PIE category. Copy and give to your ${B.name==="Army"?"Rater":B.name==="Air Force"||B.name==="Space Force"?"supervisor":B.name==="Marines"?"Reporting Senior":"Chief/LPO"} before ${B.evalDoc} season.`],
           ].map(([icon,tab,desc])=>(
-            <div key={tab} style={{ display:"flex",gap:12,alignItems:"flex-start",marginBottom:14,background:C.navyMid,borderRadius:10,padding:"12px 14px",border:`1px solid ${C.navyBorder}` }}>
-              <span style={{ fontSize:22,flexShrink:0 }}>{icon}</span>
+            <div key={tab} style={{ display:"flex",gap:12,alignItems:"flex-start",marginBottom:10,background:C.navyMid,borderRadius:10,padding:"11px 13px",border:`1px solid ${C.navyBorder}` }}>
+              <span style={{ fontSize:20,flexShrink:0 }}>{icon}</span>
               <div>
-                <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:14,color:C.text,marginBottom:2 }}>{tab}</div>
-                <div style={{ fontSize:12,color:C.textDim,lineHeight:1.5 }}>{desc}</div>
+                <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:13,color:C.text,marginBottom:2 }}>{tab}</div>
+                <div style={{ fontSize:11,color:C.textDim,lineHeight:1.5 }}>{desc}</div>
               </div>
             </div>
           ))}
-          <div style={{ background:"rgba(46,204,113,.1)",borderRadius:9,padding:"10px 13px",border:`1px solid rgba(46,204,113,.2)`,fontSize:12,color:C.green,lineHeight:1.6 }}>
-            💡 <strong>Pro tip:</strong> Use the 🎙️ mic button or the red + button to log wins in 10 seconds right after they happen.
+          <div style={{ background:"rgba(46,204,113,.1)",borderRadius:9,padding:"9px 12px",border:`1px solid rgba(46,204,113,.2)`,fontSize:11,color:C.green,lineHeight:1.6 }}>
+            💡 Tap the 🎙️ mic or the red + button to log wins in 10 seconds — right after they happen.
           </div>
         </div>
       )
@@ -1680,9 +2313,9 @@ function LoginScreen({ onGoogleLogin, onDemo, loading }) {
       <div style={{ position:"absolute",fontSize:300,opacity:.03,userSelect:"none",pointerEvents:"none",lineHeight:1 }}>🎖️</div>
       <div style={{ position:"relative",textAlign:"center",maxWidth:380,width:"100%" }}>
         <div style={{ width:72,height:72,borderRadius:18,background:`linear-gradient(135deg,${C.red},#8B0000)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:36,margin:"0 auto 20px",boxShadow:"0 8px 32px rgba(206,51,52,.4)" }}>🎖️</div>
-        <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:800,fontSize:52,color:C.text,letterSpacing:-1,lineHeight:1 }}>LetsBrag</div>
+        <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:800,fontSize:52,color:C.text,letterSpacing:-1,lineHeight:1 }}>LetsBrag™</div>
         <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:600,fontSize:16,color:C.textDim,letterSpacing:3,textTransform:"uppercase",marginTop:4,marginBottom:8 }}>for U.S. Service Members</div>
-        <div style={{ fontSize:14,color:C.textDim,lineHeight:1.7,marginBottom:32 }}>Your year-round military career log.<br/>Built for eval season. Used all year.<br/><span style={{ fontSize:12, color:C.textFaint }}>Navy · Army · Marines · Air Force · Space Force · Coast Guard</span></div>
+        <div style={{ fontSize:14,color:C.textDim,lineHeight:1.7,marginBottom:32 }}>Your year-round military career tracker.<br/>Log wins. Track goals. Build your brag doc.<br/><span style={{ fontSize:12, color:C.textFaint }}>Navy · Army · Marines · Air Force · Space Force · Coast Guard</span></div>
 
         <button onClick={onGoogleLogin} disabled={loading} style={{ width:"100%",padding:"14px 20px",background:"#fff",color:"#111",border:"none",borderRadius:10,fontWeight:700,fontSize:15,cursor:loading?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:10,marginBottom:12,boxShadow:"0 4px 16px rgba(0,0,0,.3)",opacity:loading?0.7:1 }}>
           {loading?<span className="spin" style={{ display:"inline-block",width:18,height:18,border:"2px solid #ccc",borderTopColor:"#333",borderRadius:"50%" }} />
@@ -1690,11 +2323,17 @@ function LoginScreen({ onGoogleLogin, onDemo, loading }) {
           {loading?"Signing in...":"Continue with Google"}
         </button>
 
-        <button onClick={onDemo} style={{ width:"100%",padding:"12px 20px",background:"transparent",color:C.textDim,border:`1px solid ${C.navyBorder}`,borderRadius:10,fontWeight:600,fontSize:14,cursor:"pointer",marginBottom:24 }}>Try Demo (no login)</button>
+        <button onClick={onDemo} style={{ width:"100%",padding:"12px 20px",background:"transparent",color:C.textDim,border:`1px solid ${C.navyBorder}`,borderRadius:10,fontWeight:600,fontSize:14,cursor:"pointer",marginBottom:12 }}>Try Demo (no login)</button>
+        <div style={{ fontSize:10,color:C.textFaint,textAlign:"center",marginBottom:16,lineHeight:1.6 }}>
+          Demo mode stores data on this device only.<br/>Sign in with Google to protect your data.
+        </div>
 
-        <div style={{ fontSize:11,color:C.textFaint,lineHeight:1.6 }}>🔒 Your data is private and encrypted.<br/>Works offline — log wins anywhere, anytime.<br/>All 6 branches supported.</div>
+        <div style={{ fontSize:11,color:C.textFaint,lineHeight:1.6 }}>
+          🔒 Secure sign-in via Google · Your data stays on your device<br/>
+          Works offline after first login · All 6 branches supported
+        </div>
         <div style={{ marginTop:18,paddingTop:14,borderTop:`1px solid ${C.navyBorder}`,fontSize:10,color:C.textFaint,lineHeight:1.7,textAlign:"center" }}>
-          © 2026 LetsBrag · All Rights Reserved<br/>
+          © 2026 LetsBrag™ · All Rights Reserved<br/>
           Unauthorized copying or distribution is prohibited.<br/>
           Not an official DoD product.
         </div>
@@ -1705,31 +2344,30 @@ function LoginScreen({ onGoogleLogin, onDemo, loading }) {
 
 // ─── TABS ─────────────────────────────────────────────────────────────────────
 // TABS are now rendered dynamically in App using branch config
+// ─── SOFT LAUNCH: Basic tier only — AI tabs added in v2 ──────────────────────
 const TABS=[
-  {id:"overview",    icon:"📊", label:"Overview"},
-  {id:"goals",       icon:"🎯", label:"Goals"},
-  {id:"tasks",       icon:"✅", label:"Achievements"},
-  {id:"byquarter",   icon:"📅", label:"By Quarter"},
-  {id:"brag",        icon:"⭐", label:"Brag Doc"},
-  {id:"awards",      icon:"🏆", label:"Awards"},
-  {id:"dates",       icon:"⏰", label:"Key Dates"},
-  {id:"coach",       icon:"🤖", label:"AI Coach"},
-  {id:"timeline",    icon:"📈", label:"Timeline"},
-  {id:"transition",  icon:"🎓", label:"Transition"},
-  {id:"package",     icon:"📦", label:"Package"},
-  {id:"iloveme",     icon:"🎖️",  label:"I Love Me"},
-  {id:"docs",        icon:"📂", label:"Career Docs"},
-  {id:"profile",     icon:"👤", label:"Profile"},
-  {id:"help",        icon:"❓", label:"Help"},
+  {id:"overview",  icon:"📊", label:"Overview"},
+  {id:"goals",     icon:"🎯", label:"Goals"},
+  {id:"tasks",     icon:"✅", label:"Achievements"},
+  {id:"byquarter", icon:"📅", label:"By Quarter"},
+  {id:"brag",      icon:"⭐", label:"Brag Doc"},
+  {id:"awards",    icon:"🏆", label:"Awards"},
+  {id:"dates",     icon:"⏰", label:"Key Dates"},
+  {id:"iloveme",   icon:"🎖️",  label:"I Love Me"},
+  {id:"docs",      icon:"📂", label:"Career Docs"},
+  {id:"profile",   icon:"👤", label:"Profile"},
+  {id:"help",      icon:"❓", label:"Help"},
 ];
 
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
 export default function App() {
   const [firebaseReady, setFirebaseReady] = useState(false);
+  const [syncing,       setSyncing]       = useState(false);
+  const [lastSynced,    setLastSynced]    = useState(null);
   const [user,          setUser]          = useState(null);
   const [authLoading,   setAuthLoading]   = useState(false);
   const [loggedIn,      setLoggedIn]      = useLocalStorage("lb_loggedIn", false);
-  const [tasks,         setTasks]         = useLocalStorage("lb_tasks",    SAMPLE_TASKS);
+  const [tasks,         setTasks]         = useLocalStorage("lb_tasks",    []);
   const [profile,       setProfile]       = useLocalStorage("lb_profile",  EMPTY_PROFILE);
   const [ilovemeFiles,  setIlovemeFiles]  = useLocalStorage("lb_ilove",    []);
   const [docFiles,      setDocFiles]      = useLocalStorage("lb_docs",     []);
@@ -1738,8 +2376,16 @@ export default function App() {
   const [goalModal,     setGoalModal]     = useState(null);
   const [branch,        setBranch]        = useLocalStorage("lb_branch",   "");
   const [tosAck,        setTosAck]        = useLocalStorage("lb_tos",      false);
+  // Subscription state — checks URL param on return from Stripe
+  const [subscribed,   setSubscribed]   = useLocalStorage("lb_subscribed", false);
+  const [subBilling,   setSubBilling]   = useLocalStorage("lb_billing",    "monthly");
+  const [checkingOut,  setCheckingOut]  = useState(false);
+  const currentTier = TIERS.basic;
+  const canAccess = () => true;
+  const setShowPricing = ()=>{};
+  const setUpgradePrompt = ()=>{};
   const [onboarded,     setOnboarded]     = useLocalStorage("lb_onboarded", false);
-  const [allTabs,       setAllTabs]       = useLocalStorage("lb_alltabs",   false);
+  const [allTabs,       setAllTabs]       = useState(true); // Basic launch — all tabs visible
   const [opsecAck,      setOpsecAck]      = useLocalStorage("lb_opsec",    false);
   const B = branch && BRANCHES[branch] ? BRANCHES[branch] : BRANCHES.Navy;
   const [activeTab,     setActiveTab]     = useState("overview");
@@ -1750,19 +2396,77 @@ export default function App() {
   const [awards,        setAwards]        = useLocalStorage("lb_awards",    []);
   const [keyDateModal,  setKeyDateModal]  = useState(null);
   const [awardModal,    setAwardModal]    = useState(null);
-  const [bulletModal,   setBulletModal]   = useState(null);
-  const [coachMessages, setCoachMessages] = useLocalStorage("lb_coach",   []);
-  const [coachInput,    setCoachInput]    = useState("");
-  const [coachLoading,  setCoachLoading]  = useState(false);
   const [habitNudge,    setHabitNudge]    = useState(false);
-  const [darkMode,      setDarkMode]      = useLocalStorage("lb_dark",    true);
-  const [apiKey,        setApiKeyState]   = useLocalStorage("lb_apikey",   "");
-  const [showApiSetup,  setShowApiSetup]  = useState(false);
-  const saveApiKey = (key) => { setApiKeyState(key); try { localStorage.setItem("lb_apikey", key); } catch {} };
+  // AI features removed for soft launch — added in v2
+  const setBulletModal  = ()=>{};
+  const setShowApiSetup = ()=>{};
+  const showApiSetup    = false;
+  const saveApiKey      = ()=>{};
+  const [darkMode, setDarkMode] = useLocalStorage("lb_dark", true);
+  // Override color tokens based on mode — used throughout the app
+  const C = darkMode ? {
+    navy:"#0A1628", navyMid:"#111E35", navyCard:"#152240", navyBorder:"#1E3050",
+    red:"#DC2626", redLight:"#EF4444", gold:"#F59E0B", blue:"#3E89FF", green:"#2ECC71",
+    text:"#E8EDF5", textDim:"#8FA3BC", textFaint:"#3A4E68",
+  } : {
+    navy:"#F0F4FF", navyMid:"#E2E8F4", navyCard:"#FFFFFF", navyBorder:"#CBD5E8",
+    red:"#DC2626", redLight:"#EF4444", gold:"#D97706", blue:"#2563EB", green:"#16A34A",
+    text:"#0F172A", textDim:"#475569", textFaint:"#94A3B8",
+  };
 
-  // Init on mount
+  // Sync CSS variables for dark/light mode
+  useEffect(()=>{
+    const r = document.documentElement.style;
+    r.setProperty("--c-navy",     C.navy);
+    r.setProperty("--c-navymid",  C.navyMid);
+    r.setProperty("--c-navycard", C.navyCard);
+    r.setProperty("--c-border",   C.navyBorder);
+    r.setProperty("--c-text",     C.text);
+    r.setProperty("--c-textdim",  C.textDim);
+    r.setProperty("--c-red",      C.red);
+    document.body.style.background = C.navy;
+    document.body.style.color = C.text;
+  },[darkMode]);
+
+  // Init on mount — restore auth session if user was previously logged in
   useEffect(()=>{
     setFirebaseReady(true);
+    // Restore Firebase auth session on page reload
+    let unsubscribe = ()=>{};
+    onAuthReady((u) => {
+      if (u) {
+        setUser(u);
+        setLoggedIn(true);
+        // Restore cloud data on page reload
+        syncFromCloud(u);
+      }
+    }).then(unsub => {
+      if (unsub) unsubscribe = unsub;
+    });
+    // Check if returning from Stripe checkout
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("subscribed") === "true") {
+      setSubscribed(true);
+      window.history.replaceState({}, "", APP_URL);
+    }
+    if (params.get("checkout") === "cancelled") {
+      window.history.replaceState({}, "", APP_URL);
+    }
+    // Cleanup auth listener on unmount
+    return () => unsubscribe();
+  },[]);
+
+  // Auto-save to Firestore when data changes (debounced via 3s delay)
+  useEffect(()=>{
+    if (!user?.uid || !loggedIn || !navigator.onLine) return;
+    const timer = setTimeout(()=>{
+      pushToCloud(user.uid);
+    }, 3000); // 3 second debounce
+    return () => clearTimeout(timer);
+  },[tasks, goals, awards, keyDates, profile, branch, darkMode, subscribed]);
+
+  // Habit nudge check
+  useEffect(()=>{
     // Weekly habit nudge — check if no achievements logged in 7 days
     const stored = localStorage.getItem("lb_tasks");
     if (stored) {
@@ -1773,20 +2477,333 @@ export default function App() {
         if (daysSince >= 7) setHabitNudge(true);
       }
     }
-  },[]);
+  },[tasks]);
 
-  // Google login - currently uses demo mode
-  // To enable real Google login, add Firebase config to a separate firebase.ts
-  const handleGoogleLogin = async () => {
-    setAuthLoading(true);
-    setTimeout(() => {
-      setLoggedIn(true);
-      setAuthLoading(false);
-    }, 800);
+  // Load and merge cloud data after login
+  const syncFromCloud = async (u) => {
+    if (!u || !navigator.onLine) return;
+    setSyncing(true);
+    try {
+      const cloudData = await loadUserData(u.uid);
+      if (cloudData) {
+        // Cloud data wins — restore everything saved to Firestore
+        if (cloudData.profile)      { setProfile(cloudData.profile);     localStorage.setItem("lb_profile",  JSON.stringify(cloudData.profile)); }
+        if (cloudData.tasks)        { setTasks(cloudData.tasks);          localStorage.setItem("lb_tasks",    JSON.stringify(cloudData.tasks)); }
+        if (cloudData.goals)        { setGoals(cloudData.goals);          localStorage.setItem("lb_goals",    JSON.stringify(cloudData.goals)); }
+        if (cloudData.awards)       { setAwards(cloudData.awards);        localStorage.setItem("lb_awards",   JSON.stringify(cloudData.awards)); }
+        if (cloudData.keyDates)     { setKeyDates(cloudData.keyDates);    localStorage.setItem("lb_keydates", JSON.stringify(cloudData.keyDates)); }
+        if (cloudData.branch)       { setBranch(cloudData.branch);        localStorage.setItem("lb_branch",   JSON.stringify(cloudData.branch)); }
+        if (cloudData.darkMode !== undefined) { setDarkMode(cloudData.darkMode); }
+        if (cloudData.subscribed)   { setSubscribed(cloudData.subscribed); }
+        setLastSynced(new Date());
+      } else {
+        // First time logging in from this device — push local data to cloud
+        await pushToCloud(u.uid);
+      }
+    } catch(e) {
+      console.warn("Sync error:", e);
+    }
+    setSyncing(false);
   };
 
-  const handleLogout = () => {
-    setUser(null); setLoggedIn(false);
+  // Push all local data up to Firestore
+  const pushToCloud = async (uid) => {
+    if (!uid || !navigator.onLine) return;
+    try {
+      await saveUserData(uid, {
+        profile, tasks, goals, awards, keyDates,
+        branch, darkMode, subscribed,
+        email: user?.email || "",
+        displayName: user?.displayName || "",
+      });
+      setLastSynced(new Date());
+    } catch(e) {
+      console.warn("Push error:", e);
+    }
+  };
+
+  // Real Google login via Firebase Auth
+  const handleGoogleLogin = async () => {
+    if (!navigator.onLine) {
+      alert("Internet connection required to sign in. The app works offline once you're logged in.");
+      return;
+    }
+    setAuthLoading(true);
+    try {
+      const result = await signInWithGoogle();
+      const u = result.user;
+      setUser(u);
+      setLoggedIn(true);
+      // Sync cloud data — restores their profile across devices
+      await syncFromCloud(u);
+      // Pre-fill profile name if still empty after sync
+      if (u.displayName && !profile.name) {
+        const updated = {...profile, name: u.displayName};
+        setProfile(updated);
+        try { localStorage.setItem("lb_profile", JSON.stringify(updated)); } catch {}
+      }
+    } catch(e) {
+      if (e.code === "auth/popup-closed-by-user") {
+        // User closed popup — no error needed
+      } else if (e.code === "auth/popup-blocked") {
+        alert("Popup was blocked by your browser. Please allow popups for letsbrag.netlify.app and try again.");
+      } else if (e.code === "auth/network-request-failed") {
+        alert("Network error. Please check your connection and try again.");
+      } else {
+        console.error("Auth error:", e);
+        alert("Sign in failed. Please try again.");
+      }
+    }
+    setAuthLoading(false);
+  };
+
+  const handleLogout = async () => {
+    try { await signOutUser(); } catch {}
+    setUser(null);
+    setLoggedIn(false);
+    // Clear sensitive state on logout
+    setOnboarded(false);
+    setOpsecAck(false);
+    setTosAck(false);
+  };
+
+
+  const generateBragPDF = async () => {
+    // Load jsPDF dynamically
+    if (!window.jspdf) {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+        s.onload = resolve; s.onerror = reject;
+        document.head.appendChild(s);
+      });
+    }
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation:"portrait", unit:"mm", format:"letter" });
+
+    const sailor  = [profile.paygrade, profile.rate, profile.name].filter(Boolean).join(" ");
+    const ship    = [profile.ship, profile.command].filter(Boolean).join(" | ");
+    const date    = new Date().toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"});
+    const doneT   = tasks.filter(t=>t.status==="Complete");
+
+    // Color palette for each PIE section
+    const PIE_COLORS = {
+      P: { header:[124,99,255], light:[245,243,255], label:"PERFORMANCE",      subtitle:"Job Duties · Qualifications · Mission Impact" },
+      I: { header:[62,137,255], light:[240,246,255], label:"SELF-IMPROVEMENT", subtitle:"Education · Advancement · Certifications" },
+      E: { header:[46,204,113], light:[240,255,247], label:"EXPOSURE",         subtitle:"Awards · Boards · Volunteering · Visibility" },
+    };
+
+    const pageW = 215.9; // letter width mm
+    const pageH = 279.4;
+    const marginL = 18;
+    const marginR = 18;
+    const contentW = pageW - marginL - marginR;
+    let y = 20;
+
+    const checkPage = (needed=10) => {
+      if (y + needed > pageH - 18) { doc.addPage(); y = 20; }
+    };
+
+    // ── HEADER ──────────────────────────────────────────────────────────────
+    // Red top bar
+    doc.setFillColor(220, 38, 38);
+    doc.rect(0, 0, pageW, 12, "F");
+
+    // App name
+    doc.setFont("helvetica","bold");
+    doc.setFontSize(22);
+    doc.setTextColor(255,255,255);
+    doc.text("LetsBrag™", marginL, 8.5);
+
+    // Right side — branch
+    doc.setFontSize(9);
+    doc.setTextColor(255,255,255);
+    doc.text(`U.S. ${B.name} ${B.emoji}`, pageW - marginR, 8.5, {align:"right"});
+
+    y = 22;
+
+    // Title
+    doc.setFont("helvetica","bold");
+    doc.setFontSize(18);
+    doc.setTextColor(20,30,50);
+    doc.text("BRAG SHEET", marginL, y);
+    y += 7;
+
+    // Member info block
+    if (sailor) {
+      doc.setFont("helvetica","normal");
+      doc.setFontSize(10);
+      doc.setTextColor(80,100,130);
+      doc.text(sailor, marginL, y);
+      y += 5;
+    }
+    if (ship) {
+      doc.setFontSize(9);
+      doc.text(ship, marginL, y);
+      y += 5;
+    }
+    doc.setFontSize(9);
+    doc.text(`Generated: ${date}`, marginL, y);
+    y += 3;
+
+    // Divider line
+    doc.setDrawColor(220,38,38);
+    doc.setLineWidth(0.8);
+    doc.line(marginL, y, pageW-marginR, y);
+    y += 8;
+
+    // ── PIE SECTIONS ─────────────────────────────────────────────────────────
+    const sections = [
+      { key:"P", ...PIE_COLORS.P },
+      { key:"I", ...PIE_COLORS.I },
+      { key:"E", ...PIE_COLORS.E },
+    ];
+
+    for (const sec of sections) {
+      const items = doneT.filter(t=>t.pie===sec.key);
+      if (!items.length) continue;
+
+      checkPage(20);
+
+      // Section header bar
+      doc.setFillColor(...sec.header);
+      doc.roundedRect(marginL, y, contentW, 10, 2, 2, "F");
+      doc.setFont("helvetica","bold");
+      doc.setFontSize(11);
+      doc.setTextColor(255,255,255);
+      doc.text(sec.label, marginL+4, y+7);
+      doc.setFont("helvetica","normal");
+      doc.setFontSize(8);
+      doc.setTextColor(255,255,255);
+      doc.text(sec.subtitle, pageW-marginR-4, y+7, {align:"right"});
+      y += 14;
+
+      // Achievement cards
+      for (let i=0; i<items.length; i++) {
+        const task = items[i];
+
+        // Estimate card height
+        const descLines = task.description ? doc.splitTextToSize(task.description, contentW-12).length : 0;
+        const impactLines = task.impact ? doc.splitTextToSize(task.impact, contentW-12).length : 0;
+        const feedbackLines = task.feedback ? doc.splitTextToSize(task.feedback, contentW-12).length : 0;
+        const cardH = 10 + (descLines*4.5) + (impactLines*4.5) + (feedbackLines*4.5) + (task.skills?.length?8:0) + 6;
+
+        checkPage(cardH + 6);
+
+        // Card background (light tint)
+        doc.setFillColor(...sec.light);
+        doc.roundedRect(marginL, y, contentW, cardH, 2, 2, "F");
+        // Left accent bar
+        doc.setFillColor(...sec.header);
+        doc.rect(marginL, y, 3, cardH, "F");
+
+        let cy = y + 7;
+
+        // Achievement name
+        doc.setFont("helvetica","bold");
+        doc.setFontSize(10);
+        doc.setTextColor(20,30,50);
+        const nameLines = doc.splitTextToSize(task.name.toUpperCase(), contentW-16);
+        doc.text(nameLines, marginL+7, cy);
+        cy += nameLines.length * 5;
+
+        // Meta row — quarter, eval period, priority
+        const meta = [
+          task.quarter && Q_SHORT[task.quarter]||task.quarter,
+          task.evalPeriod,
+          task.commandObjective,
+          task.priority==="High"?"⚠ HIGH PRIORITY":null,
+        ].filter(Boolean).join("  ·  ");
+        if (meta) {
+          doc.setFont("helvetica","normal");
+          doc.setFontSize(7.5);
+          doc.setTextColor(...sec.header);
+          doc.text(meta, marginL+7, cy);
+          cy += 5;
+        }
+
+        // Description
+        if (task.description) {
+          doc.setFont("helvetica","italic");
+          doc.setFontSize(8.5);
+          doc.setTextColor(80,90,110);
+          const dLines = doc.splitTextToSize(task.description, contentW-12);
+          doc.text(dLines, marginL+7, cy);
+          cy += dLines.length * 4.5;
+        }
+
+        // Impact box
+        if (task.impact) {
+          cy += 2;
+          doc.setFont("helvetica","bold");
+          doc.setFontSize(7.5);
+          doc.setTextColor(...sec.header);
+          doc.text("MEASURABLE IMPACT:", marginL+7, cy);
+          cy += 4;
+          doc.setFont("helvetica","normal");
+          doc.setFontSize(8.5);
+          doc.setTextColor(20,30,50);
+          const iLines = doc.splitTextToSize(task.impact, contentW-12);
+          doc.text(iLines, marginL+7, cy);
+          cy += iLines.length * 4.5;
+        } else {
+          cy += 2;
+          doc.setFont("helvetica","bold");
+          doc.setFontSize(8);
+          doc.setTextColor(200,100,50);
+          doc.text("[ADD QUANTIFIABLE IMPACT — numbers, %, $, timeframe]", marginL+7, cy);
+          cy += 5;
+        }
+
+        // Feedback quote
+        if (task.feedback) {
+          cy += 1;
+          doc.setFont("helvetica","italic");
+          doc.setFontSize(8);
+          doc.setTextColor(100,110,130);
+          const fLines = doc.splitTextToSize(`"${task.feedback}"`, contentW-12);
+          doc.text(fLines, marginL+7, cy);
+          cy += fLines.length * 4.5;
+        }
+
+        // Skills
+        if (task.skills?.length) {
+          cy += 1;
+          doc.setFont("helvetica","normal");
+          doc.setFontSize(7.5);
+          doc.setTextColor(120,130,150);
+          doc.text(`Competencies: ${task.skills.join(" / ")}`, marginL+7, cy);
+          cy += 4;
+        }
+
+        y += cardH + 5;
+      }
+
+      y += 4;
+    }
+
+    // ── FOOTER ───────────────────────────────────────────────────────────────
+    checkPage(16);
+    doc.setFillColor(10,22,40);
+    doc.rect(0, pageH-14, pageW, 14, "F");
+    doc.setFont("helvetica","normal");
+    doc.setFontSize(7.5);
+    doc.setTextColor(140,163,188);
+    doc.text("© 2026 LetsBrag™  ·  All Rights Reserved  ·  Not an official DoD product  ·  letsbrag.netlify.app", pageW/2, pageH-7, {align:"center"});
+
+    // Add page numbers
+    const pageCount = doc.internal.getNumberOfPages();
+    for (let i=1; i<=pageCount; i++) {
+      doc.setPage(i);
+      doc.setFont("helvetica","normal");
+      doc.setFontSize(7.5);
+      doc.setTextColor(140,163,188);
+      doc.text(`Page ${i} of ${pageCount}`, pageW-marginR, pageH-7, {align:"right"});
+    }
+
+    // Save
+    const filename = `LetsBrag_BragSheet_${sailor.replace(/\s+/g,"_")||"Export"}_${new Date().toISOString().slice(0,10)}.pdf`;
+    doc.save(filename);
   };
 
   // Task CRUD
@@ -1820,6 +2837,17 @@ export default function App() {
   const closeDateModal=()=>setKeyDateModal(null);
   const saveDate   = form=>{ keyDateModal.isEdit?setKeyDates(ds=>ds.map(d=>d.id===form.id?form:d)):setKeyDates(ds=>[...ds,{...form,id:nextDateId()}]); closeDateModal(); };
   const delDate    = id=>{ setKeyDates(ds=>ds.filter(d=>d.id!==id)); closeDateModal(); };
+
+  const handleCheckout = async (billing) => {
+    setCheckingOut(true);
+    const priceId = billing==="annual" ? STRIPE_PRICES.annual : STRIPE_PRICES.monthly;
+    try {
+      await goToCheckout(priceId);
+    } catch(e) {
+      alert("Could not open checkout. Please check your connection and try again.");
+    }
+    setCheckingOut(false);
+  };
 
   const copyBragDoc = () => {
     const sailor = [profile.paygrade, profile.rate, profile.name].filter(Boolean).join(" ");
@@ -1924,7 +2952,7 @@ export default function App() {
   const fsel={ fontSize:12,border:`1px solid ${C.navyBorder}`,borderRadius:8,padding:"7px 10px",background:C.navyMid,cursor:"pointer",outline:"none",color:C.text };
 
   return (
-    <div style={{ fontFamily:"'DM Sans',sans-serif",background:darkMode?C.navy:"#F0F4FF",minHeight:"100vh",paddingBottom:80 }}>
+    <div style={{ fontFamily:"'DM Sans',sans-serif",background:C.navy,minHeight:"100vh",paddingBottom:80 }}>
       <style>{FONTS+CSS}</style>
       <OfflineBanner />
       {habitNudge&&loggedIn&&(
@@ -1949,28 +2977,32 @@ export default function App() {
           <div style={{ display:"flex",alignItems:"center",gap:10 }}>
             <div style={{ width:34,height:34,borderRadius:8,background:`linear-gradient(135deg,${C.red},#8B0000)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18 }}>{branch?B.emoji:"🎖️"}</div>
             <div>
-              <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:800,fontSize:20,color:C.text,letterSpacing:-.5,lineHeight:1 }}>LetsBrag <span style={{ color:C.red,fontSize:14 }}>{appYear}</span></div>
+              <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:800,fontSize:20,color:C.text,letterSpacing:-.5,lineHeight:1 }}>LetsBrag™ <span style={{ color:C.red,fontSize:14 }}>{appYear}</span></div>
               <div style={{ fontSize:10,color:C.textFaint,lineHeight:1,marginTop:1 }}>{B.emoji} U.S. {B.name}</div>
               {(user?.displayName||profile.name)&&<div style={{ fontSize:10,color:C.textFaint,lineHeight:1 }}>{profile.paygrade} {profile.rate} {(profile.name||user?.displayName||"").split(" ").slice(-1)[0]}</div>}
+              <div style={{ display:"flex",alignItems:"center",gap:5,marginTop:1 }}>
+                <span style={{ background:"rgba(220,38,38,.15)",color:C.red,borderRadius:99,padding:"1px 7px",fontSize:9,fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,letterSpacing:.5,cursor:"pointer" }} onClick={()=>setShowPricing(true)}>
+                  {subscribed ? "✅ BASIC" : "LetsBrag™"}
+                </span>
+                {user&&<span style={{ fontSize:9,color:syncing?"#F59E0B":lastSynced?C.green:C.textFaint,fontWeight:600 }}>
+                  {syncing?"⟳ Syncing…":lastSynced?"✓ Synced":"○ Local"}
+                </span>}
+              </div>
             </div>
           </div>
           <div style={{ display:"flex",gap:8,alignItems:"center" }}>
-            <button onClick={()=>setDarkMode(d=>!d)} title="Toggle theme" style={{ background:C.navyMid,border:`1px solid ${C.navyBorder}`,color:C.textDim,width:34,height:34,borderRadius:8,cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center" }}>{darkMode?"☀️":"🌙"}</button>
+            <button onClick={()=>setDarkMode(d=>!d)} title={darkMode?"Switch to Light Mode":"Switch to Dark Mode"} style={{ background:C.navyMid,border:`1px solid ${C.navyBorder}`,color:C.textDim,width:34,height:34,borderRadius:8,cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center" }}>{darkMode?"☀️":"🌙"}</button>
             <button onClick={openAdd} style={{ background:C.red,color:"#fff",border:"none",padding:"8px 14px",borderRadius:8,fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:14,cursor:"pointer",whiteSpace:"nowrap" }}>+ Log Win</button>
           </div>
         </div>
         <div style={{ display:"flex",overflowX:"auto",padding:"8px 10px 0",gap:2,scrollbarWidth:"none" }}>
-          {(allTabs ? TABS : TABS.slice(0,5)).map(({id,icon,label})=>(
-            <button key={id} onClick={()=>setActiveTab(id)} style={{ padding:"8px 12px",borderRadius:"7px 7px 0 0",border:"none",cursor:"pointer",fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:13,background:activeTab===id?C.navy:"transparent",color:activeTab===id?C.text:"rgba(122,143,168,.7)",whiteSpace:"nowrap",flexShrink:0,transition:"all .15s",display:"flex",alignItems:"center",gap:5,borderBottom:activeTab===id?`2px solid ${C.red}`:"2px solid transparent" }}>
+          {TABS.map(({id,icon,label})=>(
+            <button key={id} onClick={()=>setActiveTab(id)}
+              style={{ padding:"8px 12px",borderRadius:"7px 7px 0 0",border:"none",cursor:"pointer",fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:13,background:activeTab===id?C.navy:"transparent",color:activeTab===id?C.text:"rgba(122,143,168,.7)",whiteSpace:"nowrap",flexShrink:0,transition:"all .15s",display:"flex",alignItems:"center",gap:5,borderBottom:activeTab===id?`2px solid ${C.red}`:"2px solid transparent" }}>
               <span>{icon}</span><span className="tab-text">{label}</span>
             </button>
           ))}
-          {!allTabs&&(
-            <button onClick={()=>setAllTabs(true)}
-              style={{ padding:"8px 10px",borderRadius:"7px 7px 0 0",border:"none",cursor:"pointer",fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:12,background:"transparent",color:"rgba(122,143,168,.7)",whiteSpace:"nowrap",flexShrink:0 }}>
-              ••• More
-            </button>
-          )}
+
         </div>
       </div>
 
@@ -2025,6 +3057,7 @@ export default function App() {
               <div style={{ background:"rgba(62,137,255,.08)",borderRadius:9,padding:"11px 13px",marginTop:14,borderLeft:`3px solid ${C.blue}` }}>
                 <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:11,color:C.blue,marginBottom:3,letterSpacing:1 }}>⚓ GUIDANCE</div>
                 <div style={{ fontSize:11,color:C.textDim,lineHeight:1.65 }}>{B.pieGuidance||"Aim for ~60% P, ~25% I, ~15% E. Your leadership looks at all three."}</div>
+
               </div>
             </div>
             <div className="fade-up" style={{ background:C.navyCard,borderRadius:14,padding:20,border:`1px solid ${C.navyBorder}`,animationDelay:"140ms" }}>
@@ -2158,6 +3191,15 @@ export default function App() {
         </>}
 
         {activeTab==="tasks"&&<>
+          {B.juniorEnlistedNote&&["E-1","E-2","E-3"].some(pg=>profile.paygrade?.startsWith(pg))&&(
+            <div style={{ background:"rgba(245,166,35,.1)",borderRadius:10,padding:"11px 14px",marginBottom:14,border:`1px solid rgba(245,166,35,.25)`,display:"flex",gap:10,alignItems:"flex-start" }}>
+              <span style={{ fontSize:16,flexShrink:0 }}>📋</span>
+              <div>
+                <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:12,color:C.gold,marginBottom:3 }}>NOTE FOR JUNIOR ENLISTED — {B.name.toUpperCase()}</div>
+                <div style={{ fontSize:11,color:C.textDim,lineHeight:1.6 }}>{B.juniorEnlistedNote}</div>
+              </div>
+            </div>
+          )}
           <div style={{ display:"flex",gap:8,marginBottom:16,flexWrap:"wrap",alignItems:"center" }}>
             <select style={fsel} value={filters.status} onChange={e=>setFilters(f=>({...f,status:e.target.value}))}>{["All","Not Started","In Progress","On Hold","Complete"].map(o=><option key={o}>{o}</option>)}</select>
             <select style={fsel} value={filters.pie}    onChange={e=>setFilters(f=>({...f,pie:e.target.value}))}>{["All","P","I","E"].map(o=><option key={o}>{o}</option>)}</select>
@@ -2188,14 +3230,19 @@ export default function App() {
           <div className="fade-up" style={{ background:C.navyCard,borderRadius:12,padding:"13px 16px",marginBottom:18,border:`1px solid ${C.navyBorder}` }}>
             <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10 }}>
               <div>
-                <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:16,color:C.text }}>Brag Doc — EVAL Ready ⭐</div>
-                <div style={{ fontSize:12,color:C.textDim,marginTop:2 }}>Organized by PIE category. Copy and paste into an email or Word doc to send to your Chief.</div>
+                <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:16,color:C.text }}>{`Brag Doc — ${B.evalDoc} Ready ⭐`}</div>
+                <div style={{ fontSize:12,color:C.textDim,marginTop:2 }}>{`Organized by PIE. Copy and give to your ${B.name==='Army'?'Rater':B.name==='Air Force'||B.name==='Space Force'?'supervisor':B.name==='Marines'?'Reporting Senior':'Chief/LPO'} before ${B.evalDoc} close-out.`}</div>
               </div>
               <div style={{ display:"flex",alignItems:"center",gap:10,flexWrap:"wrap" }}>
-                <div style={{ display:"flex",alignItems:"center",gap:10,flexWrap:"wrap" }}><div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:800,fontSize:24,color:C.red }}>{done.length} <span style={{ fontSize:12,fontWeight:600,color:C.textFaint }}>completed</span></div><button onClick={()=>setBulletModal({task:null})} style={{ background:"rgba(124,99,255,.2)",color:"#A78BFA",border:"1px solid rgba(124,99,255,.3)",padding:"6px 12px",borderRadius:8,fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:13,cursor:"pointer",whiteSpace:"nowrap" }}>🤖 AI Bullets</button></div>
-                <button onClick={copyBragDoc} style={{ background:copied?"rgba(46,204,113,.2)":C.red,color:copied?"#4ADE80":"#fff",border:copied?`1px solid rgba(46,204,113,.4)`:"none",padding:"10px 18px",borderRadius:8,fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:15,cursor:"pointer",display:"flex",alignItems:"center",gap:7,transition:"all .3s",whiteSpace:"nowrap" }}>
-                  {copied ? "✓ Copied!" : "📋 Copy Full Brag Doc"}
-                </button>
+                <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:800,fontSize:24,color:C.red }}>{done.length} <span style={{ fontSize:12,fontWeight:600,color:C.textFaint }}>completed</span></div>
+                <div style={{ display:"flex",gap:8,flexWrap:"wrap" }}>
+                  <button onClick={copyBragDoc} style={{ background:copied?"rgba(46,204,113,.2)":C.red,color:copied?"#4ADE80":"#fff",border:copied?`1px solid rgba(46,204,113,.4)`:"none",padding:"10px 16px",borderRadius:8,fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",gap:7,transition:"all .3s",whiteSpace:"nowrap" }}>
+                    {copied ? "✓ Copied!" : "📋 Copy Text"}
+                  </button>
+                  <button onClick={generateBragPDF} style={{ background:"rgba(62,137,255,.15)",color:"#60A5FA",border:"1px solid rgba(62,137,255,.3)",padding:"10px 16px",borderRadius:8,fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",gap:7,whiteSpace:"nowrap" }}>
+                    📄 Export PDF
+                  </button>
+                </div>
               </div>
             </div>
             {done.length>0&&<div style={{ marginTop:12,padding:"9px 12px",background:"rgba(62,137,255,.08)",borderRadius:8,border:`1px solid rgba(62,137,255,.2)`,fontSize:11,color:"#60A5FA",lineHeight:1.6 }}>
@@ -2251,6 +3298,17 @@ export default function App() {
                       }
                       {task.feedback&&<div style={{ background:"rgba(255,255,255,.04)",borderRadius:9,padding:"9px 12px",marginBottom:10 }}><div style={{ fontSize:11,color:"rgba(232,237,245,.65)",lineHeight:1.55,fontStyle:"italic" }}>{task.feedback}</div></div>}
                       {task.skills?.length>0&&<div style={{ display:"flex",flexWrap:"wrap",gap:5,marginBottom:8 }}>{task.skills.map(s=><span key={s} style={{ background:"rgba(62,137,255,.15)",color:"#60A5FA",borderRadius:99,padding:"2px 8px",fontSize:10,fontWeight:600 }}>{s}</span>)}</div>}
+                      {task.receipts?.length>0&&(
+                        <div style={{ display:"flex",gap:6,marginTop:8,flexWrap:"wrap" }}>
+                          {task.receipts.map(r=>(
+                            <div key={r.id} onClick={e=>{e.stopPropagation(); if(r.dataUrl){const a=document.createElement("a");a.href=r.dataUrl;a.target="_blank";a.rel="noopener noreferrer";document.body.appendChild(a);a.click();document.body.removeChild(a);}}}
+                              style={{ display:"flex",alignItems:"center",gap:5,background:"rgba(62,137,255,.1)",borderRadius:6,padding:"3px 8px",cursor:"pointer",border:`1px solid rgba(62,137,255,.2)` }}>
+                              <span style={{ fontSize:11 }}>{r.type?.startsWith("image/")?"🖼️":r.type==="application/pdf"?"📄":"📎"}</span>
+                              <span style={{ fontSize:10,color:"#60A5FA",fontWeight:600,maxWidth:100,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{r.name}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                       <div style={{ display:"flex",justifyContent:"space-between",marginTop:8 }}>
                         {task.requestor?<div style={{ fontSize:10,color:C.textFaint }}>✓ {task.requestor}</div>:<div/>}
                         <div style={{ fontSize:10,color:C.textFaint }}>{task.visibility}</div>
@@ -2533,7 +3591,8 @@ export default function App() {
               {
                 section:"🤖 AI Features",
                 items:[
-                  ["Why isn't the AI working?","AI features require a free Anthropic API key. Go to Profile tab → tap '🤖 Enable AI' → follow the setup steps. Takes 2 minutes and the free tier gives you $5 in credits."],
+                  ["When will AI features be available?","AI-powered features — including the Career Coach, Eval Bullet Generator, Package Builder, and Transition Assistant — are coming in the next version of LetsBrag. You'll be notified when they launch."],
+              [`How does the ${B.evalDoc} system work?`, B.evalSystem||"Select your branch in Profile to see your branch-specific evaluation system information."],
                   ["Is my data safe with the AI?","Yes. Your conversations go directly from your device to Anthropic using your own key. LetsBrag never sees your AI conversations or API key."],
                   ["What can I ask the AI Coach?","Anything about your career — 'What should I focus on for promotion?', 'Review my PIE balance', 'Help me prepare for a board', 'What does my eval score mean?'"],
                   ["Does AI work offline?","No. AI features require an internet connection. You can still log everything offline — generate AI bullets when back online."],
@@ -2567,14 +3626,30 @@ export default function App() {
               </div>
             ))}
 
+            <div style={{ background:"rgba(124,99,255,.08)",borderRadius:12,padding:"16px 18px",border:`1px solid rgba(124,99,255,.2)`,marginBottom:14 }}>
+              <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:15,color:"#A78BFA",marginBottom:10 }}>🚀 Coming in Version 2</div>
+              {[
+                ["🤖","AI Career Coach","Chat with an AI mentor who knows your branch, rank, and logged achievements."],
+                ["⚡","AI Eval Bullet Generator","Type your achievement in plain English — AI rewrites it as a polished eval bullet."],
+                ["📦","Package Builder","AI builds your advancement package, award nomination, or selection board package."],
+                ["🎓","Transition Assistant","Translates your military career into a civilian resume and LinkedIn profile."],
+                ["📈","Career Timeline","A visual year-by-year story of your full military career."],
+              ].map(([icon,title,desc])=>(
+                <div key={title} style={{ display:"flex",gap:10,alignItems:"flex-start",marginBottom:10,paddingBottom:10,borderBottom:`1px solid rgba(124,99,255,.1)` }}>
+                  <span style={{ fontSize:18,flexShrink:0 }}>{icon}</span>
+                  <div><div style={{ fontSize:12,fontWeight:600,color:C.text,marginBottom:2 }}>{title}</div><div style={{ fontSize:11,color:C.textDim,lineHeight:1.5 }}>{desc}</div></div>
+                </div>
+              ))}
+              <div style={{ fontSize:11,color:"#A78BFA",textAlign:"center",marginTop:4 }}>These features are being built now. You'll be notified when they launch.</div>
+            </div>
             <div style={{ background:"rgba(62,137,255,.08)",borderRadius:12,padding:"14px 16px",border:`1px solid rgba(62,137,255,.2)`,textAlign:"center" }}>
               <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:14,color:"#60A5FA",marginBottom:4 }}>Still need help?</div>
-              <div style={{ fontSize:12,color:C.textDim,lineHeight:1.6 }}>Visit <strong style={{ color:C.text }}>letsbrag.netlify.app</strong> on a desktop for the full experience.<br/>Your feedback makes LetsBrag better for every service member.</div>
+              <div style={{ fontSize:12,color:C.textDim,lineHeight:1.6 }}>Visit <strong style={{ color:C.text }}>letsbrag.netlify.app</strong> on a desktop for the full experience.<br/>Your feedback makes LetsBrag™ better for every service member.</div>
             </div>
           </div>
         )}
 
-        {activeTab==="profile"&&<ProfileScreen profile={profile} setProfile={setProfile} user={user} onLogout={handleLogout} appYear={appYear} setAppYear={setAppYear} B={B} onChangeBranch={()=>setBranch("")} apiEnabled={AI_ENABLED()} onOpenApiSetup={()=>setShowApiSetup(true)} />}
+        {activeTab==="profile"&&<ProfileScreen profile={profile} setProfile={setProfile} user={user} onLogout={handleLogout} appYear={appYear} setAppYear={setAppYear} B={B} onChangeBranch={()=>setBranch("")} apiEnabled={false} onOpenApiSetup={()=>{}} subscribed={subscribed} subBilling={subBilling} setSubBilling={setSubBilling} handleCheckout={handleCheckout} checkingOut={checkingOut} onSyncNow={()=>user?.uid&&pushToCloud(user.uid)} syncStatus={syncing?"syncing":lastSynced?"synced":"local"} />}
 
       </div>
 
@@ -2584,7 +3659,7 @@ export default function App() {
         <div style={{ display:"inline-flex",flexDirection:"column",alignItems:"center",gap:5 }}>
           <div style={{ display:"flex",alignItems:"center",gap:8 }}>
             <span style={{ fontSize:13 }}>🎖️</span>
-            <span style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:800,fontSize:14,color:C.textFaint,letterSpacing:.5 }}>LetsBrag</span>
+            <span style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:800,fontSize:14,color:C.textFaint,letterSpacing:.5 }}>LetsBrag™</span>
             <span style={{ fontSize:13 }}>🎖️</span>
           </div>
           <div style={{ fontSize:10,color:C.textFaint,lineHeight:1.7,textAlign:"center" }}>
@@ -2602,8 +3677,7 @@ export default function App() {
       {goalModal&&<GoalModal goal={goalModal.goal} isEdit={goalModal.isEdit} onSave={saveGoal} onDelete={delGoal} onClose={closeGoalModal} />}
       {awardModal&&<AwardModal award={awardModal.award} isEdit={awardModal.isEdit} onSave={saveAward} onDelete={delAward} onClose={closeAwardModal} B={B} />}
       {keyDateModal&&<KeyDateModal kd={keyDateModal.kd} isEdit={keyDateModal.isEdit} onSave={saveDate} onDelete={delDate} onClose={closeDateModal} B={B} />}
-      {bulletModal&&<BulletModal task={bulletModal.task} branch={branch} onClose={()=>setBulletModal(null)} onApply={b=>{ setBulletModal(null); }} />}
-      {showApiSetup&&<ApiKeyModal onClose={()=>setShowApiSetup(false)} onSave={saveApiKey} />}
+      {/* AI modals — enabled in v2 */}
     </div>
   );
 }
