@@ -194,6 +194,7 @@ let _auth = null;
 let _db   = null;
 let _provider = null;
 let _fbLoaded = false;
+let _fbLoadingPromise = null;
 
 function loadFirebaseScripts() {
   return new Promise((resolve) => {
@@ -216,10 +217,12 @@ function loadFirebaseScripts() {
 
 async function loadFirebase() {
   if (_fbLoaded) return { auth: _auth, db: _db };
+  if (_fbLoadingPromise) return _fbLoadingPromise;
+  _fbLoadingPromise = (async () => {
   try {
     await loadFirebaseScripts();
     if (!window.firebase) throw new Error("Firebase scripts failed to load");
-    if (!window.firebase.apps.length) {
+    if (!window.firebase.apps?.length) {
       window.firebase.initializeApp(FB_CONFIG);
     }
     _auth     = window.firebase.auth();
@@ -233,16 +236,20 @@ async function loadFirebase() {
     return { auth: _auth, db: _db };
   } catch(e) {
     console.error("Firebase load error:", e);
+    _fbLoadingPromise = null;
     return null;
   }
+  })();
+  return _fbLoadingPromise;
 }
 
 // ── FIRESTORE HELPERS ────────────────────────────────────────────────────────
 // Save user data to Firestore — called after any change
 async function saveUserData(uid, data) {
+  if (!uid) return;
   try {
     const fb = await loadFirebase();
-    if (!fb?.db) return;
+    if (!fb?.db || !fb?.auth?.currentUser) return; // Only save if authenticated
     await fb.db.collection("users").doc(uid).set({
       ...data,
       updatedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
