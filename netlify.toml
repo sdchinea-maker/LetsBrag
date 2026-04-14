@@ -5,7 +5,7 @@
 [[headers]]
   for = "/*"
   [headers.values]
-    Content-Security-Policy = "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https: data: blob:; style-src 'self' 'unsafe-inline' https: data: blob:; font-src 'self' data: blob: https:; img-src 'self' data: blob: https:; connect-src 'self' https: wss: data: blob:; frame-src 'self' https: data: blob:; worker-src 'self' blob: https:; child-src 'self' blob: https:;"
+    Content-Security-Policy = "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https: data: blob:; style-src 'self' 'unsafe-inline' https: data: blob:; font-src 'self' data: blob: https: https://js.stripe.com https://m.stripe.network; img-src 'self' data: blob: https:; connect-src 'self' https: wss: data: blob:; frame-src 'self' https: data: blob:; worker-src 'self' blob: https:; child-src 'self' blob: https:;"
     X-Frame-Options = "SAMEORIGIN"
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
