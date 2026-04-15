@@ -1,9 +1,10 @@
 // ============================================================
 //  LetsBrag™ — Military Career Achievement Tracker
-//  Firebase Auth + Firestore + Offline + Voice Dictation
+//  Supabase Auth + Database + Stripe Payments
 // ============================================================
 
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
+import { createClient } from "@supabase/supabase-js";
 
 // ============================================================
 //  © 2026 LetsBrag — All Rights Reserved
@@ -12,6 +13,11 @@ import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 //  Protected under U.S. Copyright Law (17 U.S.C. § 101).
 //  letsbrag.netlify.app
 // ============================================================
+
+// ─── SUPABASE CONFIG ─────────────────────────────────────────────────────────
+const SUPABASE_URL  = "https://sfaobiaypwobqilnfdxj.supabase.co";
+const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNmYW9iaWF5cHdvYnFpbG5mZHhqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTg2NDYsImV4cCI6MjA5MTgzNDY0Nn0.tPgYMakCJFpm1SeMjBT8nGqUX97xKqd3Tr91UePWnZk";
+const supabase      = createClient(SUPABASE_URL, SUPABASE_ANON);
 
 // ─── AI CONFIGURATION ────────────────────────────────────────────────────────
 // Each user provides their own free Anthropic API key.
