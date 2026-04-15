@@ -42,87 +42,42 @@ const CL = {
 };
 
 // ─── TIER CONFIGURATION ──────────────────────────────────────────────────────
+const STRIPE_MONTHLY = "price_1TLQU4KLDAImwgiP8gA8S8pm";
+const STRIPE_ANNUAL  = "price_1TLQV7KLDAImwgiPyyNR0wJ3";
+const STRIPE_PAYMENT_LINK_MONTHLY = "https://buy.stripe.com/monthly"; // update after creating payment link
+const STRIPE_PAYMENT_LINK_ANNUAL  = "https://buy.stripe.com/annual";  // update after creating payment link
+
 const TIERS = {
   free: {
     id:"free", name:"Free Trial", badge:"FREE", color:"#7A8FA8",
     monthlyPrice:0, annualPrice:0,
-    description:"Try LetsBrag free for 7 days",
-    targetRank:"All ranks",
-    tabs:["overview","goals","tasks","byquarter","brag","awards","dates","iloveme","docs","help"],
-    features:[
-      "Overview dashboard",
-      "Goals tracker",
-      "Achievement log",
-      "Quarterly tracker",
-      "Brag Doc (no AI)",
-      "Awards tracker",
-      "Key dates countdown",
-      "I Love Me book",
-      "Career documents",
-      "Help & reference",
-    ],
-    aiFeatures: false,
-    trialDays: 7,
+    tabs:["overview","goals","tasks","byquarter","brag","iloveme","docs","profile","pricing","help"],
+    description:"Try LetsBrag free",
+    features:["Overview dashboard","Up to 5 achievements","Goals tracker","Basic brag doc"],
   },
-  basic: {
-    id:"basic", name:"Enlisted Basic", badge:"BASIC", color:"#3E89FF",
+  pro: {
+    id:"pro", name:"LetsBrag Pro", badge:"PRO", color:"#3E89FF",
     monthlyPrice:4.99, annualPrice:39.99,
-    description:"Everything a junior enlisted Sailor or Soldier needs",
-    targetRank:"E1–E4",
-    tabs:["overview","goals","tasks","byquarter","brag","awards","dates","iloveme","docs","help"],
+    stripePriceMonthly: STRIPE_MONTHLY,
+    stripePriceAnnual:  STRIPE_ANNUAL,
+    tabs:["overview","goals","tasks","byquarter","brag","awards","dates","coach","timeline","transition","package","iloveme","docs","profile","pricing","help"],
+    description:"Full access to everything",
     features:[
-      "Overview dashboard",
+      "Unlimited achievements",
       "Goals tracker",
-      "Achievement log (unlimited)",
-      "Quarterly tracker",
-      "Brag Doc (no AI)",
-      "Awards tracker",
-      "Key dates countdown",
-      "I Love Me book",
-      "Career documents",
-      "Help & reference",
-      "Offline access",
-      "Voice dictation",
-    ],
-    aiFeatures: false,
-    trialDays: 7,
-  },
-  nco: {
-    id:"nco", name:"NCO Pro", badge:"PRO", color:"#CE3334",
-    monthlyPrice:9.99, annualPrice:79.99,
-    description:"AI-powered tools for NCOs and mid-grade enlisted",
-    targetRank:"E5–E6",
-    tabs:["overview","goals","tasks","byquarter","brag","awards","dates","coach","package","iloveme","docs","help"],
-    features:[
-      "Everything in Enlisted Basic",
-      "AI Career Coach (chat)",
-      "AI Eval Bullet Generator",
-      "Package Builder",
-      "Career Timeline",
-      "Priority support",
-    ],
-    aiFeatures: true,
-    trialDays: 7,
-  },
-  promax: {
-    id:"promax", name:"Pro Max", badge:"PRO MAX", color:"#A78BFA",
-    monthlyPrice:14.99, annualPrice:119.99,
-    description:"The complete career platform — every feature unlocked",
-    targetRank:"E7+ · Officers · Transitioning",
-    tabs:["overview","goals","tasks","byquarter","brag","awards","dates","coach","timeline","transition","package","iloveme","docs","profile","help"],
-    features:[
-      "Everything in NCO Pro",
+      "Full brag doc with PIE framework",
+      "AI Career Coach",
       "Career Timeline",
       "Transition Assistant",
-      "Military-to-civilian resume builder",
-      "LinkedIn profile generator",
-      "Early access to new features",
-      "All future tab additions",
+      "Package Builder",
+      "I Love Me Book",
+      "Career Docs",
+      "All 6 military branches",
+      "Voice dictation",
+      "AI bullet generator",
     ],
-    aiFeatures: true,
-    trialDays: 7,
   },
-};
+}
 
 // During beta/test phase — set this to "promax" to give everyone full access
 const BETA_TIER = "promax";
@@ -1129,107 +1084,101 @@ function ProfileScreen({ profile, setProfile, user, onLogout, appYear, setAppYea
 
 
 // ─── PRICING PAGE ─────────────────────────────────────────────────────────────
-function PricingPage({ currentTier, onSelect, onClose }) {
+function PricingPage({ currentTier, onClose }) {
   const [billing, setBilling] = useState("annual");
+  const isPro = currentTier?.id === "pro";
 
-  const tierList = [TIERS.basic, TIERS.nco, TIERS.promax];
+  const monthlyUrl = "https://buy.stripe.com/14AaEY1wIcoB0MR02M38403";
+  const annualUrl  = "https://buy.stripe.com/28EeVegrC1JX7bf6ra38402";
+
+  const goToStripe = () => {
+    const url = billing === "annual" ? annualUrl : monthlyUrl;
+    window.open(url, "_blank");
+  };
+
+  const features = [
+    "Unlimited achievements",
+    "Goals tracker",
+    "Full PIE brag doc",
+    "AI Career Coach",
+    "Career Timeline",
+    "Transition Assistant (resume + LinkedIn)",
+    "Package Builder",
+    "I Love Me Book",
+    "Career Docs storage",
+    "All 6 military branches",
+    "Voice dictation on all fields",
+    "AI bullet generator",
+  ];
 
   return (
-    <div className="fade-in" style={{ position:"fixed",inset:0,background:"rgba(0,0,0,.9)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",padding:12,overflowY:"auto" }}>
-      <div style={{ width:"100%",maxWidth:700,maxHeight:"95vh",overflowY:"auto" }}>
+    <div className="fade-in" style={{ position:"fixed",inset:0,background:"rgba(0,0,0,.92)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",padding:16 }}>
+      <div style={{ background:C.navyCard,borderRadius:20,width:"100%",maxWidth:460,border:`1px solid ${C.navyBorder}`,overflow:"auto",maxHeight:"94vh" }}>
+
         {/* Header */}
-        <div style={{ textAlign:"center",marginBottom:24,position:"relative" }}>
-          {onClose&&<button onClick={onClose} style={{ position:"absolute",right:0,top:0,background:C.navyMid,border:"none",color:C.textDim,width:30,height:30,borderRadius:"50%",cursor:"pointer",fontSize:14 }}>✕</button>}
-          <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:800,fontSize:32,color:C.text,marginBottom:4 }}>Choose Your Plan</div>
-          <div style={{ fontSize:13,color:C.textDim,marginBottom:16 }}>7-day free trial on all plans · Cancel anytime · All plans include offline access</div>
+        <div style={{ background:`linear-gradient(135deg,#0B1120,#1C2942)`,padding:"28px 24px 20px",textAlign:"center",borderBottom:`1px solid ${C.navyBorder}` }}>
+          {onClose&&<button onClick={onClose} style={{ position:"absolute",top:16,right:16,background:C.navyMid,border:"none",color:C.textDim,width:30,height:30,borderRadius:"50%",cursor:"pointer",fontSize:16 }}>✕</button>}
+          <div style={{ fontSize:36,marginBottom:8 }}>🎖️</div>
+          <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:800,fontSize:28,color:C.text }}>LetsBrag Pro</div>
+          <div style={{ fontSize:13,color:C.textDim,marginTop:4 }}>Everything you need to own your military career</div>
+        </div>
+
+        <div style={{ padding:"20px 24px" }}>
+
           {/* Billing toggle */}
-          <div style={{ display:"inline-flex",background:C.navyCard,borderRadius:99,padding:4,border:`1px solid ${C.navyBorder}`,gap:4 }}>
-            {["monthly","annual"].map(b=>(
-              <button key={b} onClick={()=>setBilling(b)}
-                style={{ padding:"7px 18px",borderRadius:99,border:"none",cursor:"pointer",fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:13,background:billing===b?C.red:"transparent",color:billing===b?"#fff":C.textDim,transition:"all .2s" }}>
-                {b==="monthly"?"Monthly":"Annual"}
-                {b==="annual"&&<span style={{ marginLeft:6,background:"rgba(46,204,113,.2)",color:C.green,borderRadius:99,padding:"1px 7px",fontSize:10 }}>Save 33%</span>}
+          <div style={{ display:"flex",background:C.navyMid,borderRadius:99,padding:3,marginBottom:20,border:`1px solid ${C.navyBorder}` }}>
+            {[["monthly","Monthly"],["annual","Annual"]].map(([val,lbl])=>(
+              <button key={val} onClick={()=>setBilling(val)}
+                style={{ flex:1,padding:"8px 0",borderRadius:99,border:"none",fontWeight:700,fontSize:13,cursor:"pointer",
+                  background:billing===val?C.red:"transparent",
+                  color:billing===val?"#fff":C.textDim }}>
+                {lbl}{val==="annual"&&<span style={{ marginLeft:6,background:"rgba(46,204,113,.2)",color:"#4ADE80",borderRadius:99,padding:"1px 7px",fontSize:10,fontWeight:700 }}>SAVE 33%</span>}
               </button>
             ))}
           </div>
-        </div>
 
-        {/* Free trial banner */}
-        <div style={{ background:"rgba(46,204,113,.1)",border:`1px solid rgba(46,204,113,.25)`,borderRadius:10,padding:"10px 16px",marginBottom:16,textAlign:"center",fontSize:12,color:C.green }}>
-          🎉 <strong>Currently in Beta — All features free during testing.</strong> Pricing activates at full launch.
-        </div>
+          {/* Price */}
+          <div style={{ textAlign:"center",marginBottom:20 }}>
+            <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:800,fontSize:52,color:C.text,lineHeight:1 }}>
+              {billing==="annual"?"$3.33":"$4.99"}
+              <span style={{ fontSize:18,color:C.textDim,fontWeight:400 }}>/mo</span>
+            </div>
+            {billing==="annual"&&<div style={{ fontSize:12,color:C.textDim,marginTop:4 }}>Billed as $39.99/year</div>}
+            {billing==="monthly"&&<div style={{ fontSize:12,color:C.textDim,marginTop:4 }}>Billed monthly · cancel anytime</div>}
+          </div>
 
-        {/* Tier cards */}
-        <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:14,marginBottom:20 }}>
-          {tierList.map(tier=>{
-            const price = billing==="annual" ? tier.annualPrice : tier.monthlyPrice;
-            const perMonth = billing==="annual" ? (tier.annualPrice/12).toFixed(2) : tier.monthlyPrice.toFixed(2);
-            const isPopular = tier.id==="nco";
-            const isCurrent = currentTier===tier.id;
-
-            return (
-              <div key={tier.id} style={{ background:C.navyCard,borderRadius:14,padding:"20px 18px",border:`2px solid ${isPopular?tier.color:isCurrent?"rgba(46,204,113,.5)":C.navyBorder}`,position:"relative",display:"flex",flexDirection:"column" }}>
-                {isPopular&&<div style={{ position:"absolute",top:-12,left:"50%",transform:"translateX(-50%)",background:C.red,color:"#fff",borderRadius:99,padding:"3px 14px",fontSize:11,fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,whiteSpace:"nowrap" }}>MOST POPULAR</div>}
-                {isCurrent&&<div style={{ position:"absolute",top:-12,right:14,background:"rgba(46,204,113,.2)",color:C.green,border:`1px solid rgba(46,204,113,.4)`,borderRadius:99,padding:"3px 12px",fontSize:10,fontWeight:600 }}>Current Plan</div>}
-
-                <div style={{ marginBottom:12 }}>
-                  <span style={{ background:`${tier.color}25`,color:tier.color,borderRadius:99,padding:"2px 10px",fontSize:10,fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,letterSpacing:.5 }}>{tier.badge}</span>
-                </div>
-                <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:800,fontSize:20,color:C.text,marginBottom:2 }}>{tier.name}</div>
-                <div style={{ fontSize:11,color:C.textDim,marginBottom:14,lineHeight:1.4 }}>{tier.targetRank}</div>
-
-                <div style={{ marginBottom:14 }}>
-                  <span style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:800,fontSize:32,color:tier.color }}>${perMonth}</span>
-                  <span style={{ fontSize:11,color:C.textDim }}>/mo</span>
-                  {billing==="annual"&&<div style={{ fontSize:10,color:C.textFaint,marginTop:2 }}>billed ${tier.annualPrice}/year</div>}
-                </div>
-
-                <div style={{ flex:1,marginBottom:16 }}>
-                  {tier.features.map((f,i)=>(
-                    <div key={i} style={{ display:"flex",alignItems:"flex-start",gap:7,marginBottom:6 }}>
-                      <span style={{ color:tier.color,flexShrink:0,marginTop:1,fontSize:12 }}>✓</span>
-                      <span style={{ fontSize:11,color:C.textDim,lineHeight:1.45 }}>{f}</span>
-                    </div>
-                  ))}
-                </div>
-
-                <button onClick={()=>onSelect&&onSelect(tier.id,billing)}
-                  style={{ width:"100%",padding:"11px",background:isCurrent?"rgba(46,204,113,.15)":tier.color,color:isCurrent?C.green:"#fff",border:isCurrent?`1px solid rgba(46,204,113,.3)`:"none",borderRadius:9,fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:15,cursor:isCurrent?"default":"pointer" }}>
-                  {isCurrent ? "Current Plan" : `Start 7-Day Free Trial`}
-                </button>
-                <div style={{ textAlign:"center",fontSize:10,color:C.textFaint,marginTop:6 }}>No credit card required during beta</div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Compare note */}
-        <div style={{ background:C.navyCard,borderRadius:10,padding:"14px 16px",border:`1px solid ${C.navyBorder}`,marginBottom:16 }}>
-          <div style={{ fontFamily:"'Barlow Condensed',sans-serif",fontWeight:700,fontSize:13,color:C.text,marginBottom:10 }}>Which plan is right for me?</div>
-          <div style={{ display:"flex",flexDirection:"column",gap:8 }}>
-            {[
-              ["🔵","Enlisted Basic — $4.99/mo","E1–E4 · Track achievements, log wins daily, build your brag doc, track awards and key dates. Everything you need before your first eval."],
-              ["🔴","NCO Pro — $9.99/mo","E5–E6 · Everything in Basic plus AI-powered eval bullet generator, AI career coach, and package builder. For NCOs who want a competitive edge."],
-              ["🟣","Pro Max — $14.99/mo","E7+ · Officers · Transitioning · The complete platform. Career timeline, military-to-civilian transition tools, LinkedIn builder, and every future feature we add."],
-            ].map(([dot,title,desc])=>(
-              <div key={title} style={{ display:"flex",gap:10,alignItems:"flex-start" }}>
-                <span style={{ fontSize:14,flexShrink:0 }}>{dot}</span>
-                <div><div style={{ fontSize:12,fontWeight:600,color:C.text,marginBottom:2 }}>{title}</div><div style={{ fontSize:11,color:C.textDim,lineHeight:1.5 }}>{desc}</div></div>
+          {/* Features list */}
+          <div style={{ background:C.navyMid,borderRadius:12,padding:"14px 16px",marginBottom:20,border:`1px solid ${C.navyBorder}` }}>
+            {features.map(f=>(
+              <div key={f} style={{ display:"flex",alignItems:"center",gap:10,padding:"5px 0",fontSize:13,color:C.text }}>
+                <span style={{ color:"#4ADE80",fontSize:14,flexShrink:0 }}>✓</span>{f}
               </div>
             ))}
           </div>
-        </div>
 
-        <div style={{ textAlign:"center",fontSize:11,color:C.textFaint,lineHeight:1.7 }}>
-          © 2026 LetsBrag · All plans include a 7-day free trial · Cancel anytime<br/>
-          Not an official DoD product · letsbrag.netlify.app
+          {/* CTA */}
+          {isPro ? (
+            <div style={{ background:"rgba(46,204,113,.1)",border:"1px solid rgba(46,204,113,.3)",borderRadius:12,padding:"14px",textAlign:"center",color:"#4ADE80",fontWeight:700,fontSize:15 }}>
+              ✓ You're on LetsBrag Pro!
+            </div>
+          ) : (
+            <button onClick={goToStripe}
+              style={{ width:"100%",background:C.red,color:"#fff",border:"none",padding:"14px",borderRadius:12,fontFamily:"'Barlow Condensed',sans-serif",fontWeight:800,fontSize:20,cursor:"pointer",marginBottom:10 }}>
+              Get LetsBrag Pro →
+            </button>
+          )}
+
+          <div style={{ textAlign:"center",fontSize:11,color:C.textFaint,marginTop:8 }}>
+            🔒 Secure payment via Stripe · Cancel anytime
+          </div>
+
         </div>
       </div>
     </div>
   );
 }
 
-// ─── UPGRADE PROMPT ───────────────────────────────────────────────────────────
+
 function UpgradePrompt({ featureName, requiredTier, onUpgrade, onClose }) {
   const tier = TIERS[requiredTier] || TIERS.nco;
   return (
