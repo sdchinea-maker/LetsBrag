@@ -1168,10 +1168,11 @@ function PricingPage({ currentTier, onClose }) {
               ✓ You're on LetsBrag Pro!
             </div>
           ) : (
-            <button onClick={goToStripe}
-              style={{ width:"100%",background:C.red,color:"#fff",border:"none",padding:"14px",borderRadius:12,fontFamily:"'Barlow Condensed',sans-serif",fontWeight:800,fontSize:20,cursor:"pointer",marginBottom:10 }}>
+            <a href={billing==="annual" ? "https://buy.stripe.com/14AaEY1wIcoB0MR02M38403" : "https://buy.stripe.com/28EeVegrC1JX7bf6ra38402"}
+              target="_blank" rel="noopener noreferrer"
+              style={{ display:"block",width:"100%",background:C.red,color:"#fff",textDecoration:"none",padding:"14px",borderRadius:12,fontFamily:"'Barlow Condensed',sans-serif",fontWeight:800,fontSize:20,cursor:"pointer",marginBottom:10,textAlign:"center",boxSizing:"border-box" }}>
               Get LetsBrag Pro →
-            </button>
+            </a>
           )}
 
           <div style={{ textAlign:"center",fontSize:11,color:C.textFaint,marginTop:8 }}>
