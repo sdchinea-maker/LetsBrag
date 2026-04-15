@@ -44,8 +44,8 @@ const CL = {
 // ─── TIER CONFIGURATION ──────────────────────────────────────────────────────
 const STRIPE_MONTHLY = "price_1TLQU4KLDAImwgiP8gA8S8pm";
 const STRIPE_ANNUAL  = "price_1TLQV7KLDAImwgiPyyNR0wJ3";
-const STRIPE_PAYMENT_LINK_MONTHLY = "https://buy.stripe.com/monthly"; // update after creating payment link
-const STRIPE_PAYMENT_LINK_ANNUAL  = "https://buy.stripe.com/annual";  // update after creating payment link
+const STRIPE_PAYMENT_LINK_MONTHLY = "https://buy.stripe.com/28EeVegrC1JX7bf6ra38402";
+const STRIPE_PAYMENT_LINK_ANNUAL  = "https://buy.stripe.com/14AaEY1wIcoB0MR02M38403";
 
 const TIERS = {
   free: {
